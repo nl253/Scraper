@@ -10,10 +10,13 @@ db_path = "~/.sqlite"
 
 cols = ["sent", "polarity", "subjectivity", "url"]
 
-spider = Spider('https://en.wikipedia.org/wiki/Hillary_Clinton',
-                'Hillary Clinton')
 
-rows = spider.scrape()
+try:
+    spider = Spider('https://en.wikipedia.org/wiki/Hillary_Clinton',
+                    'Hillary Clinton')
+    rows = spider.scrape()
+except KeyboardInterrupt:
+    print('Interrupted, no data was saved.')
 
 rows = list(spider.ientries())
 

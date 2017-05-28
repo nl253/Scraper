@@ -9,6 +9,8 @@ from queue import Queue, LifoQueue
 from .webtools import HTMLExtractor
 from .lexical import DocumentAnalayzer
 from typing import List
+from socket import timeout
+from ssl import CertificateError
 
 logging.basicConfig(
     level=logging.INFO,
@@ -68,9 +70,10 @@ class Spider():
                 text = extractor.text
                 links = extractor.links
 
-            except (HTTPError,URLError,RemoteDisconnected,UnicodeDecodeError,UnicodeEncodeError):
-                l.debug('Error while requesting HTML: possible exceptions: \
-                        HTTPError, URLError, RemoteDisconnected, UnicodeDecodeError, UnicodeEncodeError')
+            except (HTTPError,URLError,RemoteDisconnected,UnicodeDecodeError,UnicodeEncodeError,timeout,CertificateError):
+                l.debug('Error while requesting HTML: possible exceptions:\n \
+                        HTTPError, \nURLError, \nRemoteDisconnected, \nUnicodeDecodeError, \
+                        \n UnicodeEncodeError, \nCertificateError')
                 continue
 
             analyzer = DocumentAnalayzer(text, self._theme)

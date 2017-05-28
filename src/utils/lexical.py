@@ -46,3 +46,4 @@ class DocumentAnalayzer():
     @property
     def words(self) -> List[str]:
         return split(self._text)
+
