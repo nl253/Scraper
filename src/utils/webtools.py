@@ -38,9 +38,9 @@ def request_html(URL: str) -> str:
 
 
 class HTMLExtractor():
-    def __init__(self, HTML: str, theme: str):
-        self._html = HTML
-        self._soup = BeautifulSoup(HTML, 'html.parser')
+    def __init__(self, URL: str, theme: str):
+        self._html = request_html(URL)
+        self._soup = BeautifulSoup(self._html, 'html.parser')
         self._soup = SoupSanitizer(self._soup).sanitize().soup
         self._theme = theme
 

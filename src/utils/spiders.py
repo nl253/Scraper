@@ -8,6 +8,7 @@ import logging
 from queue import Queue, LifoQueue
 from .webtools import HTMLExtractor
 from .lexical import DocumentAnalayzer
+from typing import List
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,7 +34,17 @@ class Spider():
     def _add_entry(self, *entry: Entry):
         self._entries.put(tuple(entry))
         l.info('Adding an entry')
-        l.info('Table has {} entries'.format(len(self._rows)))
+        l.info('No Entries: {}'.format(self._entries.qsize()))
+
+    def entries(self) -> List[Entry]:
+        l = []
+        while not self._entries.empty():
+            l.append(self._entries.get())
+        return l
+
+    def ientries(self):
+        while not self._entries.empty():
+            yield self._entries.get()
 
     def scrape(self):
 
@@ -44,7 +55,7 @@ class Spider():
         to_be_scraped.put(self._focus_url)
 
         # loop until the queue is empty
-        while not to_be_scraped.empty() and len(self._rows) < self._max:
+        while not to_be_scraped.empty() and self._entries.qsize() < self._max:
 
             l.info('Length of queue of items to be scraped: {}'.format(to_be_scraped.qsize()))
 
@@ -58,7 +69,8 @@ class Spider():
                 links = extractor.links
 
             except (HTTPError,URLError,RemoteDisconnected,UnicodeDecodeError,UnicodeEncodeError):
-                l.debug('HTTPError or URLError or RemoteDisconnected occured when trying to request the html')
+                l.debug('Error while requesting HTML: possible exceptions: \
+                        HTTPError, URLError, RemoteDisconnected, UnicodeDecodeError, UnicodeEncodeError')
                 continue
 
             analyzer = DocumentAnalayzer(text, self._theme)
@@ -75,7 +87,7 @@ class Spider():
 
             # populate the queue
             # add to queue if less than max
-            if len(self._entries) < self._max and matches >= self._match_threshold:
+            if self._entries.qsize() < self._max and matches >= self._match_threshold:
                 for link in links:
                     l.info('Appending {} to to_be_scraped'.format(link))
                     to_be_scraped.put(link)

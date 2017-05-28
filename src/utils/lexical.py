@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from textblob.en import polarity, subjectivity
-from typing import Iterator
+from typing import Iterator, List
 from nltk import sent_tokenize
 import logging
 from shlex import split
@@ -40,5 +40,9 @@ class DocumentAnalayzer():
 
     @property
     def lexical_diversity(self) -> float:
-        words = split(self._text)
+        words = self.words
         return len(set(words)) / len(words)
+
+    @property
+    def words(self) -> List[str]:
+        return split(self._text)

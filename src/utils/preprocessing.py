@@ -58,5 +58,5 @@ class SoupSanitizer():
 
     @property
     def soup(self):
-        return self._text
+        return self._soup
 
