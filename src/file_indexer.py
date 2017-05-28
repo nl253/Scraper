@@ -9,12 +9,19 @@ from itertools import starmap
 from functools import reduce
 import operator
 from db import create_table
+from argparse import ArgumentParser
 
-db_path = "~/.sqlite"
+parser = ArgumentParser()
 
-starting_location = '~'
+parser.add_argument('database_location')
 
-starting_location = os.path.expanduser(starting_location)
+parser.add_argument('starting_location')
+
+args = parser.parse_args()
+
+db_path = os.path.expanduser(args.database_location)
+
+starting_location = os.path.expanduser(args.starting_location)
 
 cols = ["name", "mode", "inode", "device", "nlinks", "uid", "gid", "size", "atime", "mtime", "ctime"]
 

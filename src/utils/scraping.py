@@ -2,16 +2,16 @@
 # -*- coding: utf-8 -*-
 
 from bs4 import BeautifulSoup, Tag
-from urllib.request import urlopen
 from typing import Tuple, List, Iterator
 import re
-from re import compile
 from urllib.error import HTTPError, URLError
 from http.client import RemoteDisconnected
 import logging
 from queue import Queue
 from nltk import sent_tokenize
 from textblob.en import polarity, subjectivity
+from sanitizers import StringSanitizer,SoupSanitizer
+from webtools import validate_url, request_html
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,39 +21,6 @@ logging.basicConfig(
 l = logging.getLogger()
 
 Entry = Tuple[str, float, float, str]
-
-punctuation = "£%$![]{}~#-+=>^&*`¬</"
-
-regex = compile(
-    r'^(?:http|ftp)s?://'  # http:// or https://
-    # domain...
-    r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'
-    r'localhost|'  # localhost...
-    r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
-    r'(?::\d+)?'  # optional port
-    r'(?:/?|[/?]\S+)$', re.IGNORECASE)
-
-
-class Sanitizer():
-    def __init__(self, text: str):
-        self._text = text
-
-    def _remove_punct(self):
-        translator = str.maketrans(self._text, self._text, "£%$!()[]{}~#-+=>^&*`¬</")
-        self._text.translate(translator)
-
-    def _remove_references(self):
-        self._text = compile("\[\d+\]+").sub("", self._text)
-
-    def _beautify(self):
-        self._text = compile("[\n\t ]{2,}").sub(" ", self._text)
-
-    def sanitize(self):
-        self._beautify()
-        self._remove_punct()
-        self._remove_references()
-        return self._text
-
 
 class Spider():
     def __init__(self, starting_url: str, theme: str, max_entries=2000, match_threshold=8):
@@ -68,15 +35,6 @@ class Spider():
         l.info("theme set to {}".format(theme))
         l.info("starting URL set to {}".format(starting_url))
 
-    def validate_url(URL: str) -> bool:
-        l.info('Filtering links that end with ".zip" or ".rar"')
-        l.info('Filtering links through Django regex')
-        if regex.search(URL) and not compile('(\.((zip)|(rar)|(pdf)|(docx)))$').search(URL):
-            return True
-        return False
-
-    def request_html(URL: str) -> str:
-        return urlopen(URL, timeout=8).read().decode('utf-8')
 
     def depth_first_scrape(self):
         if len(self._rows) > self._max:
@@ -87,13 +45,13 @@ class Spider():
         l.info('Traversed URLs: {}'.format(self._traversed))
         l.info('Traversed {} URLs'.format(len(self._traversed)))
         try:
-            html = Spider.request_html(self._focus_url)
+            html = request_html(self._focus_url)
         except (HTTPError,URLError,RemoteDisconnected,UnicodeDecodeError,UnicodeEncodeError):
             l.debug('HTTPError or URLError occured when trying to request the html')
             return
         soup = BeautifulSoup(html, 'html.parser')
 
-        soup = Spider._clean_soup(soup)
+        soup = SoupSanitizer(soup).sanitize()
 
         text = soup.get_text()
 
@@ -115,14 +73,6 @@ class Spider():
         l.info('End of function reached, returning')
         return
 
-    def _clean_soup(soup: BeautifulSoup) -> BeautifulSoup:
-        for i in soup.find_all('script'):
-            try:
-                soup.script.extract()
-            except AttributeError:
-                break
-        return soup
-
     def _generate_links(self, soup: BeautifulSoup) -> Iterator[Tag]:
         anchors = soup.find_all('a')
         l.info('Parsed {} anchor tags'.format(len(anchors)))
@@ -138,7 +88,7 @@ class Spider():
                 l.debug('KeyError or ValueError occured when trying to access the href attribute')
                 l.debug('Most likely there was no href attribute with a valid URL')
         l.info('Filtering links using Django regexp and removing those already traversed')
-        links = filter(lambda link: Spider.validate_url(link), links)
+        links = filter(lambda link: validate_url(link), links)
         return links
 
     def breadth_first_scrape(self):
@@ -163,7 +113,7 @@ class Spider():
             l.info('Focus URL: {}'.format(self._focus_url))
 
             try:
-                html = Spider.request_html(self._focus_url)
+                html = request_html(self._focus_url)
 
             except (HTTPError,URLError,RemoteDisconnected,UnicodeDecodeError,UnicodeEncodeError):
                 l.debug('HTTPError or URLError or RemoteDisconnected occured when trying to request the html')
@@ -171,7 +121,7 @@ class Spider():
 
             soup = BeautifulSoup(html, 'html.parser')
 
-            soup = Spider._clean_soup(soup)
+            soup = SoupSanitizer(soup).sanitize()
 
             text = soup.get_text()
 
@@ -212,4 +162,4 @@ class Spider():
 
             l.info('Adding an entry to self._rows')
 
-            self._add_entry(Sanitizer(sent).sanitize(), polarity(sent), subjectivity(sent), self._focus_url)
+            self._add_entry(StringSanitizer(sent).sanitize(), polarity(sent), subjectivity(sent), self._focus_url)
