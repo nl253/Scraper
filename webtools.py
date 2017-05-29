@@ -4,9 +4,9 @@
 import re
 from urllib.request import urlopen
 import logging
-from typing import List, Iterator
+from typing import Iterator
 from bs4 import BeautifulSoup
-from preprocessing import SoupSanitizer
+from preprocessing import HTMLSanitizer
 
 logging.basicConfig(
     level=logging.INFO,
@@ -15,16 +15,16 @@ logging.basicConfig(
 
 l = logging.getLogger()
 
-regex = re.compile(
-    r'^(?:http|ftp)s?://'  # http:// or https://
-    # domain...
-    r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'
-    r'localhost|'  # localhost...
-    r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
-    r'(?::\d+)?'  # optional port
-    r'(?:/?|[/?]\S+)$', re.IGNORECASE)
 
 def validate_url(URL: str) -> bool:
+    regex = re.compile(
+        r'^(?:http|ftp)s?://'  # http:// or https://
+        # domain...
+        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'
+        r'localhost|'  # localhost...
+        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
+        r'(?::\d+)?'  # optional port
+        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
     l.info('Filtering links that end with ".zip" or ".rar"')
     l.info('Filtering links through Django regex')
     if regex.search(URL) and not re.compile('(\.((zip)|(rar)|(pdf)|(docx)))$').search(URL):
@@ -37,49 +37,22 @@ def request_html(URL: str) -> str:
 
 
 class HTMLRegexExtractor():
-    def __init__(self, URL: str):
-        self._url = URL
-        self._html = request_html(URL)
+    def __init__(self, HTML: str):
+        self._html = HTML
 
     @property
     def URLs(self) -> Iterator[str]:
-        return re.compile("(?<=href=\")https?.*?(?=\")").findall(self._html)
+        return [link for link in re.compile("(?<=href=\")https?.*?(?=\")").findall(self._html) if validate_url(link)]
 
     @property
     def title(self):
-        return re.compile("(?<=<title>).*(?=</title>)").search(self._html)
-
-
-class HTMLParserExtractor():
-    def __init__(self, URL: str, theme: str):
-        self._html = request_html(URL)
-        self._soup = BeautifulSoup(self._html, 'html.parser')
-        self._soup = SoupSanitizer(self._soup).sanitize().soup
-        self._theme = theme
-
-    @property
-    def links(self) -> List[str]:
-        anchors = self._soup.find_all('a')
-        l.info('Parsed {} anchor tags'.format(len(anchors)))
-        links = []
-        for i in range(len(anchors)):
-            try:
-                if self._theme in anchors[i].get_text() or \
-                        self._theme in anchors[i].parent.get_text() or \
-                        self._theme in anchors[i].parent.parent.get_text() or \
-                        self._theme in anchors[i].parent.parent.parent.get_text():
-                    links.append(anchors[i]['href'])
-            except (KeyError,ValueError,AttributeError):
-                l.debug('KeyError or ValueError occured when trying to access the href attribute')
-                l.debug('Most likely there was no href attribute with a valid URL')
-        l.info('Filtering links using Django regexp and removing those already traversed')
-        links = filter(lambda link: validate_url(link), links)
-        return links
+        return re.compile("(?<=<title>).*?(?=</title>)").search(self._html)
 
     @property
     def text(self) -> str:
-        return self._soup.get_text()
+        self._html = HTMLSanitizer(self._html).sanitize.html
+        return BeautifulSoup(self._html, 'html.parser').get_text()
 
     @property
-    def title(self) -> str:
-        return self._soup.title.get_text()
+    def matching_sents(self, theme: str) -> Iterator[str]:
+        return [BeautifulSoup(sent, 'html.parser').get_text() for sent in re.compile('.{,1800}' + theme + '.{,1800}', flags=re.IGNORECASE).findall(self._html)]

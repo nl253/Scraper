@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from re import compile
-from bs4 import BeautifulSoup
+import re
 
 punctuation = "£%$![]{}~#-+=>^&*`¬</"
 
@@ -31,32 +31,24 @@ class StringSanitizer():
         return self._text
 
 
-class SoupSanitizer():
-    def __init__(self, soup: BeautifulSoup):
-        self._soup = soup
+class HTMLSanitizer():
+    def __init__(self, html: str):
+        self._html = html
 
-    def _clean_javascript(self) -> BeautifulSoup:
-        for script_tag in self._soup.find_all('script'):
-            try:
-                self._soup.script.extract()
-            except AttributeError:
-                break
+    def _clean_javascript(self):
+        pat = re.compile("<script.*?</script>")
+        self._html = pat.sub("", self._html)
         return self
 
-    def _clean_css(self) -> BeautifulSoup:
-        for style_tag in self._soup.find_all('style'):
-            try:
-                self._soup.style.extract()
-            except AttributeError:
-                break
+    def _clean_css(self):
+        pat = re.compile("<style.*?</style>")
+        self._html = pat.sub("", self._html)
         return self
 
-    def sanitize(self) -> BeautifulSoup:
-        self._clean_javascript()
-        self._clean_css()
-        return self
+    def sanitize(self):
+        return self._clean_javascript()._clean_css()
 
     @property
-    def soup(self):
-        return self._soup
+    def html(self):
+        return self._html
 
