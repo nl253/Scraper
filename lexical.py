@@ -6,8 +6,9 @@ from typing import Iterator, List
 from nltk import sent_tokenize
 import logging
 from shlex import split
+from nltk import word_tokenize
 import re
-from .preprocessing import StringSanitizer
+from preprocessing import StringSanitizer
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -45,5 +46,5 @@ class DocumentAnalayzer():
 
     @property
     def words(self) -> List[str]:
-        return split(self._text)
+        return word_tokenize(self._text)
 

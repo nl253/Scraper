@@ -6,11 +6,12 @@ from urllib.error import HTTPError, URLError
 from http.client import RemoteDisconnected
 import logging
 from queue import Queue, LifoQueue
-from .webtools import HTMLExtractor
-from .lexical import DocumentAnalayzer
+from webtools import HTMLExtractor
+from lexical import DocumentAnalayzer
 from typing import List
 from socket import timeout
 from ssl import CertificateError
+from itertools import islice
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,12 +39,6 @@ class Spider():
         l.info('Adding an entry')
         l.info('No Entries: {}'.format(self._entries.qsize()))
 
-    def entries(self) -> List[Entry]:
-        l = []
-        while not self._entries.empty():
-            l.append(self._entries.get())
-        return l
-
     def ientries(self):
         while not self._entries.empty():
             yield self._entries.get()
@@ -66,7 +61,7 @@ class Spider():
             l.info('Focus URL: {}'.format(self._focus_url))
 
             try:
-                extractor = HTMLExtractor(self._focus_url, self._theme)
+                extractor = HTMLParserExtractor(self._focus_url, self._theme)
                 text = extractor.text
                 links = extractor.links
 
@@ -80,9 +75,17 @@ class Spider():
 
             matches = analyzer.theme_count
 
-            for sent in analyzer.sentences:
-                sent_analyzer = DocumentAnalayzer(sent, self._theme)
-                self._add_entry(sent, sent_analyzer.polarity, sent_analyzer.subjectivity, self._focus_url)
+            self._add_entry(
+                self._focus_url,
+                matches,
+                len(list(links)),
+                "".join(islice(analyzer.sentences, 6)),
+                analyzer.polarity,
+                analyzer.subjectivity,
+                analyzer.lexical_diversity,
+                len(text),
+                len(analyzer.words),
+                len(list(analyzer.sentences)))
 
             # count matches on the focus page
 
