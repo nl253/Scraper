@@ -46,7 +46,9 @@ class HTMLSanitizer():
         return self
 
     def sanitize(self):
-        return self._clean_javascript()._clean_css()
+        self._clean_javascript()
+        self._clean_css()
+        return self
 
     @property
     def html(self):

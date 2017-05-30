@@ -28,7 +28,8 @@ cols = ["sent", "polarity", "subjectivity", "url"]
 
 try:
     spider = Spider('https://en.wikipedia.org/wiki/Hillary_Clinton',
-                    'Hillary Clinton')
+                    'Hillary Clinton',
+                    max_entries=1000)
     rows = spider.scrape()
 except KeyboardInterrupt:
     print('Interrupted, no data was saved.')

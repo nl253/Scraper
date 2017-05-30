@@ -5,10 +5,10 @@ from textblob.en import polarity, subjectivity
 from typing import Iterator, List
 from nltk import sent_tokenize
 import logging
-from shlex import split
 from nltk import word_tokenize
 import re
 from preprocessing import StringSanitizer
+from bs4 import BeautifulSoup
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -48,3 +48,26 @@ class DocumentAnalayzer():
     def words(self) -> List[str]:
         return word_tokenize(self._text)
 
+
+    def matching_sents(self, theme: str) -> Iterator[str]:
+        return [
+            BeautifulSoup(
+                sent.group(0),
+                'html.parser').
+            get_text() for sent in re.compile(
+                '.{,1800}' + theme + '.{,1800}',
+                flags=re.IGNORECASE|re.DOTALL).finditer(self._html)]
+
+
+class HTMLAnalyser():
+    def __init__(self, HTML: str, themes: List[str]):
+        assert type(themes) is list, 'Themes is not List[str].'
+        self._themes = themes
+        self._html = HTML
+
+    @property
+    def theme_count(self) -> int:
+        count = 0
+        for theme in self._themes:
+            count += self._html.count(theme)
+        return count

@@ -3,10 +3,11 @@
 
 from typing import Tuple, Union
 from urllib.error import HTTPError, URLError
-from http.client import RemoteDisconnected
+from http_tools.client import RemoteDisconnected
 import logging
-from queue import Queue, LifoQueue
-from webtools import HTMLParserExtractor
+from queue import LifoQueue
+from collections import deque
+from http_tools import HTMLRegexExtractor, request_html
 from lexical import DocumentAnalayzer
 from typing import List
 from socket import timeout
@@ -22,12 +23,13 @@ l = logging.getLogger()
 Entry = Tuple[Union[str, float, float, str], ...]
 
 class Spider():
-    def __init__(self, starting_url: str, theme: str, max_entries=2000, match_threshold=8):
+    def __init__(self, starting_url: str, theme: str, max_entries=2000, match_threshold=10):
         self._max = max_entries
         self._theme = theme
         self._focus_url = starting_url
         self._match_threshold = match_threshold
         self._entries = LifoQueue()
+        self._traversed = deque()
         l.info('Spider created')
         l.info("Max set to {}".format(max_entries))
         l.info("Theme set to {}".format(theme))
@@ -51,24 +53,47 @@ class Spider():
     def scrape(self):
 
         # initialise
-        to_be_scraped = Queue()
+        to_be_scraped = deque()
 
         # put the firs (starting URL)
-        to_be_scraped.put(self._focus_url)
+        to_be_scraped.appendleft(self._focus_url)
 
         # loop until the queue is empty
-        while not to_be_scraped.empty() and self._entries.qsize() < self._max:
+        while len(to_be_scraped) > 0 and self._entries.qsize() < self._max:
 
-            l.info('Length of queue of items to be scraped: {}'.format(to_be_scraped.qsize()))
+            l.info('Length of queue of items to be scraped: {}'.format(len(to_be_scraped)))
 
-            self._focus_url = to_be_scraped.get()
+            self._focus_url = to_be_scraped.popleft()
+
+            self._traversed.append(self._focus_url)
 
             l.info('Focus URL: {}'.format(self._focus_url))
 
+
+            l.info('No Entries: {}'.format(self._entries.qsize()))
+
             try:
-                extractor = HTMLExtractor(self._focus_url, self._theme)
-                text = extractor.text
-                links = extractor.links
+                html = request_html(self._focus_url)
+
+                extractor = HTMLRegexExtractor(html)
+
+                matching_sents = extractor.matching_sents(self._theme)
+
+                matches = len(matching_sents)
+
+
+                for sent in matching_sents:
+                    sent_analyzer = DocumentAnalayzer(sent, self._theme)
+                    self._add_entry(sent, sent_analyzer.polarity, sent_analyzer.subjectivity, self._focus_url)
+
+                if matches < self._match_threshold:
+                    print('Too few matches, continuing')
+                    continue
+
+                # count matches on the focus page
+                l.info('found {} matches in the content of {}'.format(matches, self._focus_url))
+
+                links = extractor.URLs
 
             except (HTTPError,URLError,RemoteDisconnected,UnicodeDecodeError,UnicodeEncodeError,timeout,CertificateError):
                 l.debug('Error while requesting HTML: possible exceptions:\n \
@@ -76,23 +101,11 @@ class Spider():
                         \n UnicodeEncodeError, \nCertificateError')
                 continue
 
-            analyzer = DocumentAnalayzer(text, self._theme)
-
-            matches = analyzer.theme_count
-
-            for sent in analyzer.sentences:
-                sent_analyzer = DocumentAnalayzer(sent, self._theme)
-                self._add_entry(sent, sent_analyzer.polarity, sent_analyzer.subjectivity, self._focus_url)
-
-            # count matches on the focus page
-
-            l.info('found {} matches in the content of {}'.format(matches, self._focus_url))
-
             # populate the queue
             # add to queue if less than max
-            if self._entries.qsize() < self._max and matches >= self._match_threshold:
-                for link in links:
+            if self._entries.qsize() < self._max:
+                for link in [i for i in links if i not in self._traversed and i not in to_be_scraped]:
                     l.info('Appending {} to to_be_scraped'.format(link))
-                    to_be_scraped.put(link)
+                    to_be_scraped.appendleft(link)
 
             l.info('End of this loop, continuing')

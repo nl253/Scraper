@@ -24,8 +24,6 @@ args = parser.parse_args()
 
 db_path = args.database
 
-db_path = "~/.split"
-
 cols = [
     "url",
     "no_matches",

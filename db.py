@@ -1,57 +1,37 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import typing
-from typing import Tuple, List, Callable, Iterable, Union
+from typing import Tuple, Union
 import sqlite3
-from sqlite3 import Cursor, Connection
-from pandas import DataFrame
 import os
-from logging.config import dictConfig
-from os.path import expanduser
-from json import load
-
-dictConfig(load(open(expanduser('~/.python/logging.json'))))
+from pprint import pprint
 
 Row = Tuple[Union[str, float, int, None], ...]
 
-def connect(db_path: str) -> Tuple[Connection, Cursor, Callable]:
+class SQLite():
+    def __init__(self, db_path='~/.sqlite'):
+        self._db = os.path.expanduser(db_path)
+        self._connection = sqlite3.connect(self._db)
+        self._cursor = self._connection.cursor()
 
-    db_path = os.path.expanduser(db_path)
+    def close_connection(self) -> bool:
+        try:
+            self._connection.commit()
+            self._connection.close()
+        except:
+            print("Something went wrong.")
+            return False
 
-    connection = sqlite3.connect(db_path)
+    # performs the query quickly, saves the state automatically
+    def query(self, query_str: str, data=None, pprint_results=True, commit=True):
 
-    cursor = connection.cursor()
+        if data:
+            self._cursor.execute(query_str, data)
+        else:
+            self._cursor.execute(query_str)
 
-    return (connection, cursor, cursor.execute)
+        if commit:
+            self._connection.commit()
 
-
-def close_connection(connection: Connection) -> bool:
-    try:
-        connection.commit()
-        connection.close()
-    except:
-        print("Something went wrong.")
-        return False
-
-
-# performs the query quickly, saves the state and closes automatically
-def quick_query(db_path: str, query_str: str) -> List[Row]:
-
-    connection, cursor, query = connect(db_path)
-
-    query(query_str)
-
-    print(cursor.fetchall())
-
-    close_connection(connection)
-
-
-def create_table(rows: Iterable[Row], table_name: str, db_path: str, col_names: list, delete_existing=False) -> bool:
-
-    connection, cursor, query = connect(db_path)
-
-    DataFrame(rows, columns=col_names).to_sql(table_name, connection,
-                                              if_exists='replace' if delete_existing else 'fail')
-
-    close_connection(connection)
+        if pprint_results:
+            pprint(self._cursor.fetchall())
