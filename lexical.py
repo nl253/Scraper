@@ -3,29 +3,22 @@
 
 from textblob.en import polarity, subjectivity
 from typing import Iterator, List
-from nltk import sent_tokenize
+# from nltk import sent_tokenize
 import logging
 from nltk import word_tokenize
+from queue import LifoQueue
 import re
 from preprocessing import StringSanitizer
-from bs4 import BeautifulSoup
+# from bs4 import BeautifulSoup
 
 logging.basicConfig(
     level=logging.DEBUG,
 	format='%(levelname)s:%(asctime)s  %(message)s')
 
 class DocumentAnalayzer():
-    def __init__(self, text: str, theme: str):
+    def __init__(self, text: str, themes: List[str]):
         self._text = text
-        self._theme = theme
-
-    @property
-    def sentences(self) -> Iterator[str]:
-        sentences = sent_tokenize(self._text)
-        sentences = filter(lambda sent: len(sent) < 1500 \
-                           and re.compile(self._theme.lower(),
-                                          flags=re.IGNORECASE).search(str(sent)), sentences)
-        return (StringSanitizer(sent).sanitize().text for sent in sentences)
+        self._themes = themes
 
     @property
     def theme_count(self) -> int:
@@ -48,16 +41,14 @@ class DocumentAnalayzer():
     def words(self) -> List[str]:
         return word_tokenize(self._text)
 
-
-    def matching_sents(self, theme: str) -> Iterator[str]:
-        return [
-            BeautifulSoup(
-                sent.group(0),
-                'html.parser').
-            get_text() for sent in re.compile(
-                '.{,1800}' + theme + '.{,1800}',
-                flags=re.IGNORECASE|re.DOTALL).finditer(self._html)]
-
+    def matching_chunks(self, context=400) -> Iterator[str]:
+        accumulator = LifoQueue()
+        for theme in self._themes:
+            for matching_str in re.compile('.{,' + str(context) + '}' + theme + '.{,' + str(context) + '}',
+                flags=re.IGNORECASE|re.DOTALL).finditer(self._text):
+                accumulator.put(matching_str)
+        while not accumulator.empty():
+            yield StringSanitizer(accumulator.get()).sanitize().text
 
 class HTMLAnalyser():
     def __init__(self, HTML: str, themes: List[str]):

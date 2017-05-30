@@ -56,7 +56,7 @@ class HTMLExtractor():
 
     @property
     def peek_title(self) -> str:
-        return re.compile("(?<=<title>).*?(?=</title>)").search(self.peek)
+        return re.compile("(?<=<title>).*?(?=</title>)").search(self.peek).group(0)
 
     @property
     def peek_lang(self) -> str:
