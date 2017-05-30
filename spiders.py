@@ -60,6 +60,7 @@ class Spider():
 
             l.info('{} URLs to scrape'.format(to_be_scraped.qsize()))
 
+            # get next from from queue
             self._focus_url = to_be_scraped.get()
 
             l.info('Focus URL: {}'.format(self._focus_url))
@@ -69,8 +70,8 @@ class Spider():
 
             try:
                 # instantiate an extractor object
-                # try because it will automatically attempt to request the page
                 extractor = HTMLExtractor(self._focus_url)
+                matches = HTMLAnalyser(extractor.HTML, self._themes).theme_count
 
             except (HTTPError,URLError,RemoteDisconnected,UnicodeDecodeError,UnicodeEncodeError,timeout,CertificateError):
                 l.debug('Error while requesting HTML: possible exceptions:\n \
@@ -79,7 +80,6 @@ class Spider():
                 continue
 
             # count matches on the focus page
-            matches = HTMLAnalyser(extractor.HTML, self._themes).theme_count
             l.info('Found {} matches in the content of {}'.format(matches, self._focus_url))
 
             if matches >= self._match_threshold:

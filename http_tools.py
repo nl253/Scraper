@@ -35,8 +35,7 @@ def _validate_url(URL: str) -> bool:
 
 class HTMLExtractor():
     def __init__(self, URL: str):
-        self._html = urlopen(URL, timeout=5).read().decode('utf-8')
-        self._url = URL
+        self._response = urlopen(URL, timeout=5)
 
     @property
     def URLs(self) -> Iterator[str]:
@@ -44,15 +43,36 @@ class HTMLExtractor():
         return filter(_validate_url, map(lambda regex_object: regex_object.group(0), re.compile("(?<=href=\")https?.*?(?=\")").finditer(self._html)))
 
     @property
-    def title(self):
-        return re.compile("(?<=<title>).*?(?=</title>)").search(self._html)
+    def code_status(self) -> int:
+        return self._response.getcode()
+
+    @property
+    def peek(self) -> str:
+        return self._response.peek().decode('utf-8')
+
+    @property
+    def URL(self) -> str:
+        return self._response.url
+
+    @property
+    def peek_title(self) -> str:
+        return re.compile("(?<=<title>).*?(?=</title>)").search(self.peek)
+
+    @property
+    def peek_lang(self) -> str:
+        return re.compile("(?<=lang=['\"])\w+(?=['\"])").search(self.peek).group(0)
+
+    @property
+    def message(self) -> str:
+        return self._response.msg
 
     @property
     def HTML(self) -> str:
+        self._html = self._response.read().decode('utf-8')
         return self._html
 
     @property
     def text(self) -> str:
-        return BeautifulSoup(self._html, 'html.parser').get_text()
+        return BeautifulSoup(self.HTML, 'html.parser').get_text()
 
 
