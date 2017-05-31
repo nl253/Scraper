@@ -3,14 +3,14 @@
 
 from spiders import Spider
 import db
-from time import sleep
+from pprint import pprint
 
 database = db.SQLite()
 
 themes=["A. Turing",
         "computer science",
+        "computing",
         "Turing",
-        "k",
         "A Turing",
         "Turing Machine",
         "finate automata"]
@@ -20,13 +20,15 @@ starting_urls = ["https://en.wikipedia.org/wiki/Alan_Turing",
                  "http://www.turing.org.uk/publications/dnb.html"]
 
 spider = Spider(starting_urls=starting_urls,
-                themes=themes, max_entries=100,
+                themes=themes,
+                max_entries=2000,
+                max_threads=4,
                 match_threshold=6)
 
 spider.scrape()
 
 for i in spider.ientries:
-    print(i)
+    pprint(i)
 
-# for row in spider.ientries:
-    # database.query("INSERT INTO turing VALUES (?, ?)", data=row)
+for row in spider.ientries:
+    database.query("INSERT INTO turing VALUES (?, ?)", data=row)
