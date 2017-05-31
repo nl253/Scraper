@@ -2,11 +2,10 @@
 # -*- coding: utf-8 -*-
 
 from textblob.en import polarity, subjectivity
-from typing import Iterator, List
+from typing import List
 # from nltk import sent_tokenize
 import logging
 from nltk import word_tokenize
-from queue import LifoQueue
 import re
 from preprocessing import StringSanitizer
 # from bs4 import BeautifulSoup
@@ -41,14 +40,11 @@ class DocumentAnalayzer():
     def words(self) -> List[str]:
         return word_tokenize(self._text)
 
-    def matching_chunks(self, context=400) -> Iterator[str]:
-        accumulator = LifoQueue()
-        for theme in self._themes:
-            for matching_str in re.compile('.{,' + str(context) + '}' + theme + '.{,' + str(context) + '}',
-                flags=re.IGNORECASE|re.DOTALL).finditer(self._text):
-                accumulator.put(matching_str)
-        while not accumulator.empty():
-            yield StringSanitizer(accumulator.get()).sanitize().text
+    @property
+    def matching_sents(self, context=500) -> str:
+        for theme in set(map(str.lower, self._themes)):
+            for matching_str in re.compile('(?:\.[\n\t ]{1,2})[A-Z].{,' + str(context) + '}' + theme + '.{,' + str(context) + '}\.(?=[ \t\n]{1,2})', flags=re.IGNORECASE|re.DOTALL).finditer(self._text):
+                yield StringSanitizer(matching_str.group(0)).sanitize().text
 
 class HTMLAnalyser():
     def __init__(self, HTML: str, themes: List[str]):

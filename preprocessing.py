@@ -8,11 +8,13 @@ punctuation = "£%$![]{}~#-+=>^&*`¬</"
 
 class StringSanitizer():
     def __init__(self, text: str):
+        assert type(text) is str, 'Type of text not str'
         self._text = text
 
     def _remove_punct(self):
-        translator = str.maketrans(self._text, self._text, "£%$!()[]{}~#-+=>^&*`¬</")
+        translator = str.maketrans(self._text, self._text, "#\~|£%$!()[]{}~#-+=>^&*`¬</")
         self._text.translate(translator)
+        # self._text = re.compile("(([\n^])|(\\xa0?\n?\^?))+").sub(" ", self._text)
         return self
 
     def _remove_references(self):

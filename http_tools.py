@@ -36,11 +36,13 @@ def _validate_url(URL: str) -> bool:
 class HTMLExtractor():
     def __init__(self, URL: str):
         self._response = urlopen(URL, timeout=5)
+        self._html = None
+        self._peeked = None
 
     @property
     def URLs(self) -> Iterator[str]:
         l.info('Retrieving and filtering links')
-        return filter(_validate_url, map(lambda regex_object: regex_object.group(0), re.compile("(?<=href=\")https?.*?(?=\")").finditer(self._html)))
+        return filter(_validate_url, map(lambda regex_object: regex_object.group(0), re.compile("(?<=href=\")https?.*?(?=\")").finditer(self.HTML)))
 
     @property
     def code_status(self) -> int:
@@ -48,7 +50,9 @@ class HTMLExtractor():
 
     @property
     def peek(self) -> str:
-        return self._response.peek().decode('utf-8')
+        if not self._peeked:
+            self._peeked = self._response.peek().decode('utf-8')
+        return self._peeked
 
     @property
     def URL(self) -> str:
@@ -56,7 +60,7 @@ class HTMLExtractor():
 
     @property
     def peek_title(self) -> str:
-        return re.compile("(?<=<title>).*?(?=</title>)").search(self.peek).group(0)
+        return re.compile("(?<=<title>).*(?=</title>)").search(self.peek).group(0)
 
     @property
     def peek_lang(self) -> str:
@@ -68,7 +72,8 @@ class HTMLExtractor():
 
     @property
     def HTML(self) -> str:
-        self._html = self._response.read().decode('utf-8')
+        if not self._html:
+            self._html = self._response.read().decode('utf-8')
         return self._html
 
     @property
