@@ -3,6 +3,7 @@
 
 import re
 from urllib.request import urlopen
+from urllib.parse import urljoin, uses_relative, urlparse
 import logging
 from typing import Iterator
 from bs4 import BeautifulSoup
@@ -15,22 +16,27 @@ logging.basicConfig(
 
 l = logging.getLogger(name=__name__)
 
-url_regex = re.compile(
-    r'^(?:http|ftp)s?://'  # http:// or https://
-    # domain...
-    r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'
-    r'localhost|'  # localhost...
-    r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
-    r'(?::\d+)?'  # optional port
-    r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+class URLHelper():
+    def __init__(self):
+        self.url_regex = re.compile(
+            r'^(?:http|ftp)s?://'  # http:// or https://
+            # domain...
+            r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'
+            r'localhost|'  # localhost...
+            r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
+            r'(?::\d+)?'  # optional port
+            r'(?:/?|[/?]\S+)$', re.IGNORECASE)
 
-def _validate_url(URL: str) -> bool:
-    assert type(URL) is str, 'URL is not str.'
-    # l.info('Filtering links that end with ".zip" or ".rar"')
-    # l.info('Filtering links through Django regex')
-    if url_regex.search(URL) and not re.compile('(\.((zip)|(rar)|(pdf)|(docx)))$').search(URL):
-        return True
-    return False
+    def validate_url(self, URL: str) -> bool:
+        assert type(URL) is str, 'URL is not str.'
+        # l.info('Filtering links that end with ".zip" or ".rar"')
+        # l.info('Filtering links through Django regex')
+        if self.url_regex.search(URL) and not re.compile('(\.((zip)|(css)|(js)|(rar)|(pdf)|(docx)))$').search(URL):
+            return True
+        return False
+
+    def make_url_absolute(self, URL: str) -> str:
+        pass
 
 
 class HTMLExtractor():
@@ -38,11 +44,12 @@ class HTMLExtractor():
         self._response = urlopen(URL, timeout=5)
         self._html = None
         self._peeked = None
+        self._url_helper = URLHelper()
 
     @property
     def URLs(self) -> Iterator[str]:
         l.info('Retrieving and filtering links')
-        return filter(_validate_url, map(lambda regex_object: regex_object.group(0), re.compile("(?<=href=\")https?.*?(?=\")").finditer(self.HTML)))
+        return filter(self._url_helper.validate_url, map(lambda regex_object: regex_object.group(0), re.compile("(?<=href=\")https?.*?(?=\")").finditer(self.HTML)))
 
     @property
     def code_status(self) -> int:

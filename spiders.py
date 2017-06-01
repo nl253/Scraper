@@ -11,15 +11,28 @@ from socket import timeout
 from ssl import CertificateError
 from multiprocessing import cpu_count, Process
 from multiprocessing import Queue as SharedQueue
-from multiprocessing import Semaphore, current_process
+from multiprocessing import Semaphore, current_process, Lock
 from time import sleep
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(levelname)s : %(asctime)s : %(lineno)s : %(message)s.',
-    datefmt="%I:%M:%S")
+    level=logging.DEBUG,
+    format='%(threadName)s %(module)s %(levelname)s : %(asctime)s : %(lineno)s : %(message)s.',
+    datefmt="%M:%S")
 
 l = logging.getLogger(name=__name__)
+file_handler = logging.FileHandler('scraped.log')
+file_handler.setLevel(logging.WARNING)
+file_log_formatter = logging.Formatter('%(message)s.')
+critical_handler = logging.StreamHandler()
+critical_handler.setLevel(logging.CRITICAL)
+error_handler = logging.StreamHandler()
+error_handler.setLevel(logging.ERROR)
+file_handler.setFormatter(file_log_formatter)
+l.addHandler(file_handler)
+l.addHandler(error_handler)
+l.addHandler(critical_handler)
+
+# crawl_log = logging.getLogger(name="crawl_logger", )
 
 Entry = Tuple[Union[str, float, float, str], ...]
 
@@ -31,6 +44,7 @@ class Spider():
         self._max_entries = max_entries
         self._max_threads = max_threads
         self._themes = themes
+        self._entry_access_lock = Lock()
         # min matches on a page to add entries and links
         self._match_threshold = match_threshold
         # stack to store scraped data as tuples
@@ -70,13 +84,24 @@ class Spider():
 
     @property
     def ientries(self) -> Entry:
+
         # you cannot call it before calling scrape()
-        while not self.finished:
-            sleep(10)
+
+        # while not self.finished:
+            # sleep(10)
+
+
+        self._entry_access_lock.acquire()
+
+        import pudb; pudb.set_trace()  # XXX BREAKPOINT
+
         while not self._entries.empty():
             yield self._entries.get()
+        self._entry_access_lock.release()
 
     def scrape(self):
+
+        self._entry_access_lock.acquire()
 
         while self._entries.qsize() < self._max_entries and self._to_be_scraped.qsize() > 0:
 
@@ -101,6 +126,7 @@ class Spider():
 
         # set finished when esceped from the loop
         self._finished = True
+        self._entry_access_lock.acquire()
 
     @property
     def finished(self) -> bool:
@@ -108,24 +134,25 @@ class Spider():
 
     def _scrape(self):
         """To be run by each process thread.
+        At the end the semaphore is realsed and process terminates itself.
         """
-        curr_proc = current_process().name
-
         # loop until the queue is empty
         # assert type(self._to_be_scraped) is , 'Type of self._to_be_scraped is not Counter!'
         while self._entries.qsize() < self._max_entries and self._to_be_scraped.qsize() > 0:
 
-            l.info('{}: {} URLs to scrape'.format(curr_proc, self._to_be_scraped.qsize()))
-            l.info('{}: {} already processed'.format(curr_proc, len(self._processed_urls)))
+            proc_name = current_process().name
+
+            l.info('{}: {} URLs to scrape'.format(proc_name, self._to_be_scraped.qsize()))
+            l.info('{}: {} already processed'.format(proc_name, len(self._processed_urls)))
 
             # get next from from queue
             focus_url = self._to_be_scraped.get()
 
             if focus_url in self._processed_urls:
-                l.info('{}: current URL {} has already been processed, continuing'.format(curr_proc, focus_url))
+                l.info('{}: current URL {} has already been processed, continuing'.format(proc_name, focus_url))
                 continue
 
-            l.info('{}: Focus URL: {}'.format(curr_proc, focus_url))
+            l.info('{}: Focus URL: {}'.format(proc_name, focus_url))
 
             # add to traversed to prevent visitng twice
             self._processed_urls.add(focus_url)
@@ -137,38 +164,33 @@ class Spider():
                 matches = HTMLAnalyser(extractor.HTML, self._themes).theme_count
 
             except (IncompleteRead,HTTPError,URLError,RemoteDisconnected,UnicodeDecodeError,UnicodeEncodeError,timeout,CertificateError):
-                l.debug('{}: Error while requesting a response for {}'.format(curr_proc, focus_url))
-                l.debug('{}: Continuing'.format(curr_proc))
+                l.debug('{}: Error while requesting a response for {}'.format(proc_name, focus_url))
+                l.debug('{}: Continuing'.format(proc_name))
                 continue
 
 
             # count matches on the focus page
-            l.info('{}: Found {} matches in the content of {}'.format(curr_proc, matches, focus_url))
+            l.info('{}: Found {} matches in the content of {}'.format(proc_name, matches, focus_url))
 
             if matches >= self._match_threshold:
 
                 l.info('Enough matches, adding results and extracting links')
 
-                l.info('{}: Adding results from {} to entries'.format(curr_proc, focus_url))
+                l.info('{}: Adding results from {} to entries'.format(proc_name, focus_url))
                 for sent in DocumentAnalayzer(extractor.text, themes=self._themes).matching_sents:
                     self._add_entry(focus_url, sent)
 
                 # ensure you only traverse once
-                l.info('{}: Filetering extracted links'.format(curr_proc))
+                l.info('{}: Filetering extracted links'.format(proc_name))
 
                 # check for titles if they match any of the themes
                 links = filter(lambda link: link not in self._processed_urls, extractor.URLs)
 
-                # populate the queue
-                # l.info('{}: Adding links from {} to to_be_scraped'.format(curr_proc, focus_url))
-                # self._to_be_scraped = self._to_be_scraped.update(links)
                 for link in links:
                     self._to_be_scraped.put(link)
 
-                # l.info('To be scraped at the end of loop: {}'.format(self._to_be_scraped))
-                # l.info('Len of to be scraped at the end of loop: {}'.format(len(self._to_be_scraped)))
-
             else:
-                l.info('{}: Not enough matches in {}, continuing'.format(curr_proc, focus_url))
+                l.info('{}: Not enough matches in {}, continuing'.format(proc_name, focus_url))
 
         self._counting_semaphore.release()
+        # current_process().terminate()
