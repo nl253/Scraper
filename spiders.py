@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+# TODO
+# implement Counter with locks, or some sort of priority Queue
+# possibly use Pool
+
+
 from typing import Tuple, List
 from urllib.error import HTTPError, URLError
 from http.client import RemoteDisconnected, IncompleteRead
@@ -12,7 +17,7 @@ from socket import timeout
 from ssl import CertificateError
 from multiprocessing import cpu_count, Process
 from multiprocessing import Queue as SharedQueue
-from multiprocessing import Semaphore, current_process, Lock
+from multiprocessing import Semaphore, current_process
 from multiprocessing.managers import SyncManager
 from time import sleep
 from ctypes import c_int32
@@ -66,13 +71,12 @@ class Spider():
         self._max_entries = max_entries
         self._max_threads = max_threads
         self._themes = themes
-        self._entry_access_lock = Lock()
         # min matches on a page to add entries and links
         self._match_threshold = match_threshold
         # stack to store crawled data as tuples
         self._entries = SharedQueue()
         self._to_be_crawled = SharedQueue(20000)
-        self._jobs = []
+        self._jobs = self._manager.list()
         self._yielded_results = self._manager.Value(c_int32, 0)
         for url in starting_urls:
             self._to_be_crawled.put(url)
@@ -88,8 +92,7 @@ class Spider():
     def _add_entry(self, *data: str):
         curr_proc = current_process().name
         general_log.debug('{}: Adding an entry, Entries atm: {}'.format(curr_proc, self._entries.qsize()))
-        self._entries.put(tuple(data))
-
+        self._entries.put_nowait(tuple(data))
 
     def crawl(self):
 
@@ -97,7 +100,6 @@ class Spider():
 
         general_log.warning('{}: Setting a lock on access to entries'.format(proc_name))
 
-        self._entry_access_lock.acquire()
 
         while self._yielded_results.value < self._max_entries and self._to_be_crawled.qsize() > 0:
 
@@ -106,6 +108,7 @@ class Spider():
                 general_log.warning('{}: Semaphore acquired, starting another job'.format(proc_name))
                 job = Process(target=self._crawl)
                 self._jobs.append(job)
+                # start the last job on list
                 self._jobs[len(self._jobs) - 1].start()
 
             else:
@@ -121,7 +124,6 @@ class Spider():
 
         # when esceped from the loop
         general_log.warning('{}: Scraping finished, all jobs dead, releasing a lock on access to entries'.format(proc_name))
-        self._entry_access_lock.release()
 
     def _crawl(self):
         """To be run by each process thread.
@@ -144,11 +146,14 @@ class Spider():
             if focus_url in self._processed_urls:
                 duplicate_traversals += 1
                 if duplicate_traversals >= 5:
-                    general_log.warning('{}: >= 5 duplicate traversals, breaking'.format(proc_name))
-                    break
+                    general_log.warning('{}: >= 5 duplicate traversals, continuing'.format(proc_name))
+                    continue
                 else:
                     general_log.warning('{}: current URL {} has already been processed, continuing'.format(proc_name, focus_url))
                     continue
+
+            # reset counter
+            duplicate_traversals = 0
 
             general_log.info('{}: Focus URL: {}'.format(proc_name, focus_url))
 
@@ -180,25 +185,29 @@ class Spider():
                     general_log.debug('{}: Enough matches ({}), adding {}, it\'s content and extracting links'.format(proc_name, matches, focus_url))
                     crawl_log.info('{}: Enough matches ({}), adding {}, it\'s content and extracting links'.format(proc_name, matches, focus_url))
 
+                    # add a tuple (url: str, HTML: str)
                     self._add_entry(focus_url, extractor.HTML)
 
                 else:
                     break
 
                 # ensure you only traverse once
-                general_log.debug('{}: Enqueuing filetered, not-traversed links'.format(proc_name))
+                general_log.debug('{}: Enqueuing filtered, not-traversed links'.format(proc_name))
 
                 # check for titles if they match any of the themes
                 links = filter(lambda link: link not in self._processed_urls, extractor.URLs)
 
                 for link in links:
-                    self._to_be_crawled.put(link)
+                    self._to_be_crawled.put_nowait(link)
+
+                # reset counter
+                no_match_counter = 0
 
             elif matches == 0:
                 no_match_counter += 1
                 if no_match_counter >= 5:
-                    general_log.debug('{}: 5 >= websites in a row had no matches, breaking'.format(proc_name))
-                    break
+                    general_log.debug('{}: 5 >= websites in a row had no matches, continuing'.format(proc_name))
+                    continue
 
             else:
                 general_log.debug('{}: Not enough matches in {}, continuing'.format(proc_name, focus_url))

@@ -44,6 +44,7 @@ class HTMLExtractor():
         self._response = urlopen(URL, timeout=5)
         self._html = None
         self._peeked = None
+        self._text = None
         self._url_helper = URLHelper()
 
     @property
@@ -85,6 +86,8 @@ class HTMLExtractor():
 
     @property
     def text(self) -> str:
-        return BeautifulSoup(self.HTML, 'html.parser').get_text()
+        if type(self._text) is not str:
+            self._text = BeautifulSoup(self.HTML, 'html.parser').get_text()
+        return self._text
 
 
