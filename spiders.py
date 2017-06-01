@@ -6,7 +6,8 @@ from urllib.error import HTTPError, URLError
 from http.client import RemoteDisconnected, IncompleteRead
 import logging
 from http_tools import HTMLExtractor
-from lexical import HTMLAnalyser, DocumentAnalayzer
+from lexical import HTMLAnalyser
+# from lexical import DocumentAnalayzer
 from socket import timeout
 from ssl import CertificateError
 from multiprocessing import cpu_count, Process
@@ -14,6 +15,7 @@ from multiprocessing import Queue as SharedQueue
 from multiprocessing import Semaphore, current_process, Lock
 from multiprocessing.managers import SyncManager
 from time import sleep
+from ctypes import c_int32
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -24,11 +26,11 @@ logging.basicConfig(
 # GENERAL
 general_log = logging.getLogger(name=__name__)
 
-# LOG SCRAPED WEBSITES
-scrape_log = logging.getLogger(name='scraped')
-scrape_log_handler = logging.FileHandler('scraped.log')
-scrape_log_handler.setFormatter(logging.Formatter('%(message)s.'))
-scrape_log.addHandler(scrape_log_handler)
+# LOG crawled WEBSITES
+crawl_log = logging.getLogger(name='crawled')
+crawl_log_handler = logging.FileHandler('crawled.log')
+crawl_log_handler.setFormatter(logging.Formatter('%(message)s.'))
+crawl_log.addHandler(crawl_log_handler)
 
 # INFO for progress
 file_info_handler = logging.FileHandler('pylog.log')
@@ -58,6 +60,8 @@ Result = Tuple[str, str]
 class Spider():
     def __init__(self, starting_urls: List[str], themes: List[str],
                  max_entries=2000, match_threshold=18, max_threads=cpu_count()):
+        self._manager = SyncManager()
+        self._manager.start()
         # settings
         self._max_entries = max_entries
         self._max_threads = max_threads
@@ -65,15 +69,14 @@ class Spider():
         self._entry_access_lock = Lock()
         # min matches on a page to add entries and links
         self._match_threshold = match_threshold
-        # stack to store scraped data as tuples
+        # stack to store crawled data as tuples
         self._entries = SharedQueue()
-        self._to_be_scraped = SharedQueue(20000)
+        self._to_be_crawled = SharedQueue(20000)
         self._jobs = []
+        self._yielded_results = self._manager.Value(c_int32, 0)
         for url in starting_urls:
-            self._to_be_scraped.put(url)
+            self._to_be_crawled.put(url)
         # efficient lookup
-        self._manager = SyncManager()
-        self._manager.start()
         self._processed_urls = self._manager.list()
         self._counting_semaphore = Semaphore(self._max_threads)
         general_log.debug('Spider created')
@@ -87,27 +90,8 @@ class Spider():
         general_log.debug('{}: Adding an entry, Entries atm: {}'.format(curr_proc, self._entries.qsize()))
         self._entries.put(tuple(data))
 
-    @property
-    def ientries(self) -> Result:
 
-        # returned_rows = 0
-
-        # while returned_rows < self._max_entries:
-            # if not self._entries.empty():
-                # returned_rows += 1
-                # yield self._entries.get()
-            # else:
-                # general_log.info('{}; Attempting to iterate over results, but there aren\'t any!. Sleeping.'.format(current_process().name))
-                # sleep(10)
-
-        self._entry_access_lock.acquire()
-
-        while not self._entries.empty():
-            yield self._entries.get()
-
-        self._entry_access_lock.release()
-
-    def scrape(self):
+    def crawl(self):
 
         proc_name = current_process().name
 
@@ -115,16 +99,20 @@ class Spider():
 
         self._entry_access_lock.acquire()
 
-        while self._entries.qsize() < self._max_entries and self._to_be_scraped.qsize() > 0:
+        while self._yielded_results.value < self._max_entries and self._to_be_crawled.qsize() > 0:
 
-            if self._counting_semaphore.acquire():
+            if self._counting_semaphore.get_value() > 0:
+                self._counting_semaphore.acquire()
                 general_log.warning('{}: Semaphore acquired, starting another job'.format(proc_name))
-                job = Process(target=self._scrape)
+                job = Process(target=self._crawl)
                 self._jobs.append(job)
                 self._jobs[len(self._jobs) - 1].start()
 
             else:
-                general_log.warning('{}: Going to sleep'.format(proc_name))
+                while not self._entries.empty():
+                    self._yielded_results.value += 1
+                    yield self._entries.get()
+                general_log.warning('{}: Results are empty, {} already yielded, going to sleep'.format(proc_name, self._yielded_results.value))
                 sleep(10)
 
         # kill remaining jobs, must be done here, in the main thread
@@ -135,26 +123,32 @@ class Spider():
         general_log.warning('{}: Scraping finished, all jobs dead, releasing a lock on access to entries'.format(proc_name))
         self._entry_access_lock.release()
 
-    def _scrape(self):
+    def _crawl(self):
         """To be run by each process thread.
-        At the end the semaphore is realsed and process terminates itself.
+        At the end the semaphore is released.
         """
-        # loop until the queue is empty
-        # assert type(self._to_be_scraped) is , 'Type of self._to_be_scraped is not Counter!'
 
+        # HELPER VARIABLES
         proc_name = current_process().name
+        duplicate_traversals = 0
+        no_match_counter = 0
 
-        while self._entries.qsize() < self._max_entries and self._to_be_scraped.qsize() > 0:
+        while (self._yielded_results.value + self._entries.qsize()) < self._max_entries and self._to_be_crawled.qsize() > 0:
 
-            general_log.info('{}: {} URLs to scrape'.format(proc_name, self._to_be_scraped.qsize()))
+            general_log.info('{}: {} URLs to crawl'.format(proc_name, self._to_be_crawled.qsize()))
             general_log.info('{}: {} already processed'.format(proc_name, len(self._processed_urls)))
 
             # get next from from queue
-            focus_url = self._to_be_scraped.get()
+            focus_url = self._to_be_crawled.get()
 
             if focus_url in self._processed_urls:
-                general_log.warning('{}: current URL {} has already been processed, continuing'.format(proc_name, focus_url))
-                continue
+                duplicate_traversals += 1
+                if duplicate_traversals >= 5:
+                    general_log.warning('{}: >= 5 duplicate traversals, breaking'.format(proc_name))
+                    break
+                else:
+                    general_log.warning('{}: current URL {} has already been processed, continuing'.format(proc_name, focus_url))
+                    continue
 
             general_log.info('{}: Focus URL: {}'.format(proc_name, focus_url))
 
@@ -164,10 +158,12 @@ class Spider():
             try:
                 # instantiate an extractor object
                 extractor = HTMLExtractor(focus_url)
+
                 if extractor.message != 'OK':
                     general_log.debug('{}: Message from {} was not "OK", continuing'.format(proc_name, extractor))
                     continue
-                # get no matches in html
+
+                # count matches on the focus page
                 matches = HTMLAnalyser(extractor.HTML, self._themes).theme_count
 
             except (IncompleteRead,HTTPError,URLError,RemoteDisconnected,UnicodeDecodeError,UnicodeEncodeError,timeout,CertificateError) as e:
@@ -176,30 +172,33 @@ class Spider():
                 general_log.debug('{}: Continuing'.format(proc_name))
                 continue
 
-            # count matches on the focus page
 
             if matches >= self._match_threshold:
 
-                scrape_log.info('{}: Found {} matches in the content of {}'.format(proc_name, matches, focus_url))
-                general_log.debug('{}: Found {} matches in the content of {}'.format(proc_name, matches, focus_url))
+                if (self._yielded_results.value + self._entries.qsize()) < self._max_entries:
 
-                general_log.debug('Enough matches, adding results and extracting links')
+                    general_log.debug('{}: Enough matches ({}), adding {}, it\'s content and extracting links'.format(proc_name, matches, focus_url))
+                    crawl_log.info('{}: Enough matches ({}), adding {}, it\'s content and extracting links'.format(proc_name, matches, focus_url))
 
-                general_log.info('{}: Adding results from {} to entries'.format(proc_name, focus_url))
-                for sent in DocumentAnalayzer(extractor.text, themes=self._themes).matching_sents:
-                    if self._entries.qsize() < self._max_entries:
-                        self._add_entry(focus_url, sent)
-                    else:
-                        break
+                    self._add_entry(focus_url, extractor.HTML)
+
+                else:
+                    break
 
                 # ensure you only traverse once
-                general_log.debug('{}: Adding filetered, not-traversed links'.format(proc_name))
+                general_log.debug('{}: Enqueuing filetered, not-traversed links'.format(proc_name))
 
                 # check for titles if they match any of the themes
                 links = filter(lambda link: link not in self._processed_urls, extractor.URLs)
 
                 for link in links:
-                    self._to_be_scraped.put(link)
+                    self._to_be_crawled.put(link)
+
+            elif matches == 0:
+                no_match_counter += 1
+                if no_match_counter >= 5:
+                    general_log.debug('{}: 5 >= websites in a row had no matches, breaking'.format(proc_name))
+                    break
 
             else:
                 general_log.debug('{}: Not enough matches in {}, continuing'.format(proc_name, focus_url))

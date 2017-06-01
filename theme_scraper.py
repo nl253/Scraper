@@ -3,7 +3,6 @@
 
 from spiders import Spider
 import db
-from pprint import pprint
 
 database = db.SQLite()
 
@@ -25,7 +24,8 @@ spider = Spider(starting_urls=starting_urls,
                 max_entries=2500,
                 match_threshold=6)
 
-spider.scrape()
 
-for row in spider.ientries:
-    database.query("INSERT INTO turing VALUES (?, ?)", data=row)
+
+for row in spider.crawl():
+    # for sent in DocumentAnalayzer(extractor.text, themes=self._themes).matching_sents:
+    print(row)
