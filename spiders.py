@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Tuple, Union, List
+from typing import Tuple, List
 from urllib.error import HTTPError, URLError
 from http.client import RemoteDisconnected, IncompleteRead
 import logging
@@ -12,6 +12,7 @@ from ssl import CertificateError
 from multiprocessing import cpu_count, Process
 from multiprocessing import Queue as SharedQueue
 from multiprocessing import Semaphore, current_process, Lock
+from multiprocessing.managers import SyncManager
 from time import sleep
 
 logging.basicConfig(
@@ -46,20 +47,17 @@ error_stream_handler.setLevel(logging.ERROR)
 critical_stream_handler = logging.StreamHandler()
 critical_stream_handler.setLevel(logging.CRITICAL)
 
-
+# ASSIGN HANDLERS
 general_log.addHandler(file_info_handler)
 general_log.addHandler(warning_stream_handler)
 general_log.addHandler(error_stream_handler)
 general_log.addHandler(critical_stream_handler)
 
-# crawl_log = logging.getLogger(name="crawl_logger", )
-
-Entry = Tuple[Union[str, float, float, str], ...]
+Result = Tuple[str, str]
 
 class Spider():
     def __init__(self, starting_urls: List[str], themes: List[str],
-                 max_entries=2000, match_threshold=18, max_threads=cpu_count(),
-                 process_results_with=None, function_args=[]):
+                 max_entries=2000, match_threshold=18, max_threads=cpu_count()):
         # settings
         self._max_entries = max_entries
         self._max_threads = max_threads
@@ -74,36 +72,33 @@ class Spider():
         for url in starting_urls:
             self._to_be_scraped.put(url)
         # efficient lookup
-        self._processed_urls = set()
+        self._manager = SyncManager()
+        self._manager.start()
+        self._processed_urls = self._manager.list()
         self._counting_semaphore = Semaphore(self._max_threads)
-        self._finished = False  # initialise to False
-        self._function = process_results_with
-        self._function_args = function_args
-        assert type(function_args) is list, 'Extra args need to be passed as list.'
         general_log.debug('Spider created')
         general_log.info("Max entries set to {}".format(max_entries))
         general_log.info("Themes set to {}".format(themes))
         general_log.info("Max threads set to {}".format(max_threads))
         general_log.info("Match threshold set to {}".format(match_threshold))
 
-    def _add_entry(self, *entry: Entry):
+    def _add_entry(self, *data: str):
         curr_proc = current_process().name
-        if self._function:
-            if self._function_args:
-                # if you supply your own funct to process the data, you need to
-                # make sure it outputs a tuple
-                entry = self._processing_func(*entry, *self._function_args)
-            else:
-                entry = self._processing_func(*entry)
-        else:
-            entry = tuple(entry)
-        assert type(entry) is tuple, 'Type of entry is not tuple.'
-        general_log.debug('{}: Adding an entry'.format(curr_proc))
-        self._entries.put(entry)
-        general_log.info('{}: No Entries: {}'.format(curr_proc, self._entries.qsize()))
+        general_log.debug('{}: Adding an entry, Entries atm: {}'.format(curr_proc, self._entries.qsize()))
+        self._entries.put(tuple(data))
 
     @property
-    def ientries(self) -> Entry:
+    def ientries(self) -> Result:
+
+        # returned_rows = 0
+
+        # while returned_rows < self._max_entries:
+            # if not self._entries.empty():
+                # returned_rows += 1
+                # yield self._entries.get()
+            # else:
+                # general_log.info('{}; Attempting to iterate over results, but there aren\'t any!. Sleeping.'.format(current_process().name))
+                # sleep(10)
 
         self._entry_access_lock.acquire()
 
@@ -132,29 +127,13 @@ class Spider():
                 general_log.warning('{}: Going to sleep'.format(proc_name))
                 sleep(10)
 
-        # # once we have enough entries
-        # while not all(map(lambda job: not job.is_alive(), self._jobs)):
-            # for job in self._jobs:
-                # if job.is_alive():
-                    # general_log.warning('{}: job {} is still alive despite {} entries, going to sleep'.format(proc_name, job.name, self._entries.qsize()))
-                    # general_log.warning('{}: Current jobs: {} '.format(proc_name, self._jobs))
-                    # sleep(10)
-
+        # kill remaining jobs, must be done here, in the main thread
         for job in self._jobs:
             job.terminate()
 
-        # set finished when esceped from the loop
-
-        general_log.warning('{}: All jobs dead, setting finished to True'.format(proc_name))
-
-        self._finished = True
-
-        general_log.warning('{}: Scraping finished, releasing a lock on access to entries'.format(proc_name))
+        # when esceped from the loop
+        general_log.warning('{}: Scraping finished, all jobs dead, releasing a lock on access to entries'.format(proc_name))
         self._entry_access_lock.release()
-
-    @property
-    def finished(self) -> bool:
-        return self._finished
 
     def _scrape(self):
         """To be run by each process thread.
@@ -180,7 +159,7 @@ class Spider():
             general_log.info('{}: Focus URL: {}'.format(proc_name, focus_url))
 
             # add to traversed to prevent visitng twice
-            self._processed_urls.add(focus_url)
+            self._processed_urls.append(focus_url)
 
             try:
                 # instantiate an extractor object

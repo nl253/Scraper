@@ -22,7 +22,7 @@ starting_urls = ["https://en.wikipedia.org/wiki/Alan_Turing",
 
 spider = Spider(starting_urls=starting_urls,
                 themes=themes,
-                max_entries=100,
+                max_entries=2500,
                 match_threshold=6)
 
 spider.scrape()

@@ -4,7 +4,6 @@
 from typing import Tuple, Union
 import sqlite3
 import os
-from pprint import pprint
 
 Row = Tuple[Union[str, float, int, None], ...]
 
@@ -34,4 +33,6 @@ class SQLite():
             self._connection.commit()
 
         if pprint_results:
-            pprint(self._cursor.fetchall())
+            for i in self._cursor.fetchall():
+                if i:
+                    print(i)
