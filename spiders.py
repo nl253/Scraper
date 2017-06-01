@@ -16,21 +16,41 @@ from time import sleep
 
 logging.basicConfig(
     level=logging.DEBUG,
+    filemode='w',
     format='%(threadName)s %(module)s %(levelname)s : %(asctime)s : %(lineno)s : %(message)s.',
     datefmt="%M:%S")
 
-l = logging.getLogger(name=__name__)
-file_handler = logging.FileHandler('scraped.log')
-file_handler.setLevel(logging.WARNING)
-file_log_formatter = logging.Formatter('%(message)s.')
-critical_handler = logging.StreamHandler()
-critical_handler.setLevel(logging.CRITICAL)
-error_handler = logging.StreamHandler()
-error_handler.setLevel(logging.ERROR)
-file_handler.setFormatter(file_log_formatter)
-l.addHandler(file_handler)
-l.addHandler(error_handler)
-l.addHandler(critical_handler)
+# GENERAL
+general_log = logging.getLogger(name=__name__)
+
+# LOG SCRAPED WEBSITES
+scrape_log = logging.getLogger(name='scraped')
+scrape_log_handler = logging.FileHandler('scraped.log')
+scrape_log_handler.setFormatter(logging.Formatter('%(message)s.'))
+scrape_log.addHandler(scrape_log_handler)
+
+# INFO for progress
+file_info_handler = logging.FileHandler('pylog.log')
+file_info_handler.setFormatter(logging.Formatter('%(threadName)s %(module)s %(levelname)s : %(asctime)s : %(lineno)s : %(message)s.'))
+file_info_handler.setLevel(logging.INFO)
+
+# WARNING
+warning_stream_handler = logging.StreamHandler()
+warning_stream_handler.setLevel(logging.CRITICAL)
+
+# ERROR for serious
+error_stream_handler = logging.StreamHandler()
+error_stream_handler.setLevel(logging.ERROR)
+
+# CRITICAL
+critical_stream_handler = logging.StreamHandler()
+critical_stream_handler.setLevel(logging.CRITICAL)
+
+
+general_log.addHandler(file_info_handler)
+general_log.addHandler(warning_stream_handler)
+general_log.addHandler(error_stream_handler)
+general_log.addHandler(critical_stream_handler)
 
 # crawl_log = logging.getLogger(name="crawl_logger", )
 
@@ -60,11 +80,11 @@ class Spider():
         self._function = process_results_with
         self._function_args = function_args
         assert type(function_args) is list, 'Extra args need to be passed as list.'
-        l.info('Spider created')
-        l.info("Max entries set to {}".format(max_entries))
-        l.info("Themes set to {}".format(themes))
-        l.info("Max threads set to {}".format(max_threads))
-        l.info("Match threshold set to {}".format(match_threshold))
+        general_log.debug('Spider created')
+        general_log.info("Max entries set to {}".format(max_entries))
+        general_log.info("Themes set to {}".format(themes))
+        general_log.info("Max threads set to {}".format(max_threads))
+        general_log.info("Match threshold set to {}".format(match_threshold))
 
     def _add_entry(self, *entry: Entry):
         curr_proc = current_process().name
@@ -78,55 +98,59 @@ class Spider():
         else:
             entry = tuple(entry)
         assert type(entry) is tuple, 'Type of entry is not tuple.'
-        l.info('{}: Adding an entry'.format(curr_proc))
+        general_log.debug('{}: Adding an entry'.format(curr_proc))
         self._entries.put(entry)
-        l.info('{}: No Entries: {}'.format(curr_proc, self._entries.qsize()))
+        general_log.info('{}: No Entries: {}'.format(curr_proc, self._entries.qsize()))
 
     @property
     def ientries(self) -> Entry:
 
-        # you cannot call it before calling scrape()
-
-        # while not self.finished:
-            # sleep(10)
-
-
         self._entry_access_lock.acquire()
-
-        import pudb; pudb.set_trace()  # XXX BREAKPOINT
 
         while not self._entries.empty():
             yield self._entries.get()
+
         self._entry_access_lock.release()
 
     def scrape(self):
+
+        proc_name = current_process().name
+
+        general_log.warning('{}: Setting a lock on access to entries'.format(proc_name))
 
         self._entry_access_lock.acquire()
 
         while self._entries.qsize() < self._max_entries and self._to_be_scraped.qsize() > 0:
 
             if self._counting_semaphore.acquire():
-                l.info('Starting another job')
+                general_log.warning('{}: Semaphore acquired, starting another job'.format(proc_name))
                 job = Process(target=self._scrape)
                 self._jobs.append(job)
                 self._jobs[len(self._jobs) - 1].start()
 
             else:
-                l.info('Going to sleep')
+                general_log.warning('{}: Going to sleep'.format(proc_name))
                 sleep(10)
 
-        # once we have enough entries
-        l.info('Setting finished to True')
-        while not all(map(lambda job: not job.is_alive(), self._jobs)):
-            for job in self._jobs:
-                if job.is_alive():
-                    job.terminate()
-                    self._jobs.remove(job)
-            sleep(10)
+        # # once we have enough entries
+        # while not all(map(lambda job: not job.is_alive(), self._jobs)):
+            # for job in self._jobs:
+                # if job.is_alive():
+                    # general_log.warning('{}: job {} is still alive despite {} entries, going to sleep'.format(proc_name, job.name, self._entries.qsize()))
+                    # general_log.warning('{}: Current jobs: {} '.format(proc_name, self._jobs))
+                    # sleep(10)
+
+        for job in self._jobs:
+            job.terminate()
 
         # set finished when esceped from the loop
+
+        general_log.warning('{}: All jobs dead, setting finished to True'.format(proc_name))
+
         self._finished = True
-        self._entry_access_lock.acquire()
+
+        general_log.warning('{}: Scraping finished, releasing a lock on access to entries'.format(proc_name))
+        self._entry_access_lock.release()
 
     @property
     def finished(self) -> bool:
@@ -138,21 +162,22 @@ class Spider():
         """
         # loop until the queue is empty
         # assert type(self._to_be_scraped) is , 'Type of self._to_be_scraped is not Counter!'
+
+        proc_name = current_process().name
+
         while self._entries.qsize() < self._max_entries and self._to_be_scraped.qsize() > 0:
 
-            proc_name = current_process().name
-
-            l.info('{}: {} URLs to scrape'.format(proc_name, self._to_be_scraped.qsize()))
-            l.info('{}: {} already processed'.format(proc_name, len(self._processed_urls)))
+            general_log.info('{}: {} URLs to scrape'.format(proc_name, self._to_be_scraped.qsize()))
+            general_log.info('{}: {} already processed'.format(proc_name, len(self._processed_urls)))
 
             # get next from from queue
             focus_url = self._to_be_scraped.get()
 
             if focus_url in self._processed_urls:
-                l.info('{}: current URL {} has already been processed, continuing'.format(proc_name, focus_url))
+                general_log.warning('{}: current URL {} has already been processed, continuing'.format(proc_name, focus_url))
                 continue
 
-            l.info('{}: Focus URL: {}'.format(proc_name, focus_url))
+            general_log.info('{}: Focus URL: {}'.format(proc_name, focus_url))
 
             # add to traversed to prevent visitng twice
             self._processed_urls.add(focus_url)
@@ -160,28 +185,36 @@ class Spider():
             try:
                 # instantiate an extractor object
                 extractor = HTMLExtractor(focus_url)
+                if extractor.message != 'OK':
+                    general_log.debug('{}: Message from {} was not "OK", continuing'.format(proc_name, extractor))
+                    continue
                 # get no matches in html
                 matches = HTMLAnalyser(extractor.HTML, self._themes).theme_count
 
-            except (IncompleteRead,HTTPError,URLError,RemoteDisconnected,UnicodeDecodeError,UnicodeEncodeError,timeout,CertificateError):
-                l.debug('{}: Error while requesting a response for {}'.format(proc_name, focus_url))
-                l.debug('{}: Continuing'.format(proc_name))
+            except (IncompleteRead,HTTPError,URLError,RemoteDisconnected,UnicodeDecodeError,UnicodeEncodeError,timeout,CertificateError) as e:
+                general_log.error('{}: {} while requesting a response from {}'.format(proc_name, e, focus_url))
+                # general_log.error('{}: {}'.format(proc_name, extract_tb(sys.last_traceback)[-1]))
+                general_log.debug('{}: Continuing'.format(proc_name))
                 continue
 
-
             # count matches on the focus page
-            l.info('{}: Found {} matches in the content of {}'.format(proc_name, matches, focus_url))
 
             if matches >= self._match_threshold:
 
-                l.info('Enough matches, adding results and extracting links')
+                scrape_log.info('{}: Found {} matches in the content of {}'.format(proc_name, matches, focus_url))
+                general_log.debug('{}: Found {} matches in the content of {}'.format(proc_name, matches, focus_url))
 
-                l.info('{}: Adding results from {} to entries'.format(proc_name, focus_url))
+                general_log.debug('Enough matches, adding results and extracting links')
+
+                general_log.info('{}: Adding results from {} to entries'.format(proc_name, focus_url))
                 for sent in DocumentAnalayzer(extractor.text, themes=self._themes).matching_sents:
-                    self._add_entry(focus_url, sent)
+                    if self._entries.qsize() < self._max_entries:
+                        self._add_entry(focus_url, sent)
+                    else:
+                        break
 
                 # ensure you only traverse once
-                l.info('{}: Filetering extracted links'.format(proc_name))
+                general_log.debug('{}: Adding filetered, not-traversed links'.format(proc_name))
 
                 # check for titles if they match any of the themes
                 links = filter(lambda link: link not in self._processed_urls, extractor.URLs)
@@ -190,7 +223,7 @@ class Spider():
                     self._to_be_scraped.put(link)
 
             else:
-                l.info('{}: Not enough matches in {}, continuing'.format(proc_name, focus_url))
+                general_log.debug('{}: Not enough matches in {}, continuing'.format(proc_name, focus_url))
 
+        general_log.warning('{}: relasing a semaphore'.format(proc_name))
         self._counting_semaphore.release()
-        # current_process().terminate()

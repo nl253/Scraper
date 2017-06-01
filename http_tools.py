@@ -48,7 +48,7 @@ class HTMLExtractor():
 
     @property
     def URLs(self) -> Iterator[str]:
-        l.info('Retrieving and filtering links')
+        # l.info('Retrieving and filtering links')
         return filter(self._url_helper.validate_url, map(lambda regex_object: regex_object.group(0), re.compile("(?<=href=\")https?.*?(?=\")").finditer(self.HTML)))
 
     @property
