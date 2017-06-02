@@ -3,19 +3,17 @@
 
 from spiders import Spider
 import db
+# import lxml
+# import lxml.html
+# from lxml.html.clean import clean_html
+
 
 database = db.SQLite()
 
-themes = ["A. Turing",
-          "computer science",
-          "computing",
-          "Turing",
-          "A Turing",
-          "Turing Machine",
-          "finate automata"]
+themes = ["[Pp]ython"]
 
-urls = [ "https://en.wikipedia.org/wiki/Alan_Turing" ]
+urls = [ "https://docs.python.org/3/library/csv.html" ]
 
-for row in Spider(themes=themes, starting_urls=urls).crawl():
+for row in Spider(themes=themes, starting_urls=urls, timeout=12, max_threads=8).crawl():
     # for sent in DocumentAnalayzer(extractor.text, themes=self._themes).matching_sents:
     print(row)

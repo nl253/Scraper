@@ -18,8 +18,7 @@ from typing import Tuple, List
 from urllib.error import HTTPError, URLError
 from http.client import RemoteDisconnected, IncompleteRead
 import logging
-from http_tools import HTMLWrapper
-from lexical import HTMLAnalyser
+from analysis import HTMLAnalyser
 # from lexical import DocumentAnalayzer
 from socket import timeout
 from ssl import CertificateError
@@ -27,7 +26,7 @@ from multiprocessing import cpu_count, Process
 from multiprocessing import Queue as SharedQueue
 from multiprocessing import Semaphore, current_process
 from multiprocessing.managers import SyncManager
-from time import sleep, localtime
+from time import sleep, localtime, perf_counter
 from ctypes import c_int32
 
 logging.basicConfig(
@@ -119,25 +118,31 @@ class Spider():
     def _add_entry(self, *data: str):
         curr_proc = current_process().name
         general_log.debug('{}: Adding an entry, Entries atm: {}'.format(curr_proc, self._results.qsize()))
-        self._results.put(tuple(data))
-
+        self._results.put_nowait(tuple(data))
 
     def crawl(self):
 
+        # import ipdb; ipdb.set_trace()  # XXX BREAKPOINT
+
+        # HELPER VARIABLES
         proc_name = current_process().name
 
+        # keep track of active processes to kill later
         jobs = []
 
-        timer = localtime().tm_min
+        # for timeout
+        scrape_start_min = localtime().tm_min
 
         while True:
+
+            stats = (perf_counter(), self._yielded_results.value, self._sites_to_crawl.qsize(), self._results.qsize())
 
             # done
             if self._yielded_results.value >= self._max_results:
                 break
 
             # timeout
-            elif (localtime().tm_min - timer > self._timeout):
+            elif (localtime().tm_min - scrape_start_min > self._timeout):
                   general_log.warning('Timout')
                   break
 
@@ -156,9 +161,14 @@ class Spider():
                 jobs[jobs.index(job)].start()
 
             else:
+
+                # place to test and sanitize and return results ?
+
                 while not self._results.empty():
                     self._yielded_results.value += 1
                     yield self._results.get()
+
+                general_log.warning('{}: Statistics'.format(proc_name))
 
                 general_log.warning('{}: successfully yielded {} / {} (max), entries atm: {} '.
                                     format(
@@ -167,7 +177,30 @@ class Spider():
                                         self._max_results,
                                         self._results.qsize()))
 
-                sleep(10)
+                try:
+                    general_log.warning('{}: Average yielded: [{} / sec], [{} / min]'.
+                                    format(
+                                        (self._yielded_results.value - stats[1]) / (perf_counter() - stats[0]),
+                                        60 * ((self._yielded_results.value - stats[1]) / (perf_counter() - stats[0]))
+                                    ))
+
+                    general_log.warning('{}: Average entries added: [{} / sec], [{} / min]'.format(
+                        proc_name,
+                        (self._yielded_results.value + self._results.qsize() - (stats[3] + stats[1]))  / (perf_counter() - stats[0]),
+                        60 * (((self._results.qsize() + self._yielded_results.value) - (stats[3] + stats[1])) / (perf_counter() - stats[0]))
+                    ))
+
+                    general_log.warning('{}: Average links enqueued: [{} / sec], [{} / min]'.format(
+                        proc_name,
+                        (self._sites_to_crawl.qsize() - stats[2]) / (perf_counter() - stats[0]),
+                        60 * ((self._sites_to_crawl.qsize() - stats[2]) / (perf_counter() - stats[0]))
+                    ))
+
+                except IndexError:
+                    pass
+
+
+                sleep(20)
 
         ###################################################################################
 
@@ -176,7 +209,6 @@ class Spider():
 
         # kill remaining jobs, must be done here, in the main thread
         general_log.warning('{}: killing jobs'.format(proc_name))
-
 
         # when done
         for job in jobs:
@@ -189,7 +221,6 @@ class Spider():
 
         # when esceped from the loop
         general_log.warning('{}: Scraping finished, all jobs dead'.format(proc_name))
-
 
     def _crawl(self):
         """To be run by each process thread.
@@ -213,21 +244,21 @@ class Spider():
 
             focus_url = self._sites_to_crawl.get()
 
-            general_log.info('{}: Focus URL: {}'.format(proc_name, focus_url))
-
             # add to traversed to prevent visitng twice
             self._processed_urls.append(focus_url)
 
-            try:
-                # instantiate an extractor object
-                extractor = HTMLWrapper(focus_url)
+            general_log.info('{}: Focus URL: {}'.format(proc_name, focus_url))
 
-                if extractor.message != 'OK':
-                    general_log.debug('{}: Message from {} was not "OK", continuing'.format(proc_name, extractor))
+            try:
+                # instantiate an analyser object
+                analyser = HTMLAnalyser(focus_url, self._themes)
+
+                if analyser.message != 'OK':
+                    general_log.debug('{}: Message from {} was not "OK", continuing'.format(proc_name, analyser))
                     continue
 
                 # count matches on the focus page
-                matches = HTMLAnalyser(extractor.HTML, self._themes).theme_count if self._themes else self._match_threshold + 1
+                matches = analyser.theme_count if all(map(bool, self._themes)) else self._match_threshold + 1
 
             except (IncompleteRead,HTTPError,URLError,RemoteDisconnected,UnicodeDecodeError,UnicodeEncodeError,timeout,CertificateError) as e:
                 general_log.error('{}: {} while requesting a response from {}'.format(proc_name, e, focus_url))
@@ -238,13 +269,13 @@ class Spider():
 
             if matches >= self._match_threshold:
 
-                if (self._yielded_results.value + self._results.qsize()) < self._max_results and type(extractor.HTML) is str and len(extractor.HTML) > 10:
+                if (self._yielded_results.value + self._results.qsize()) < self._max_results and type(analyser.HTML) is str and len(analyser.HTML) > 10:
 
                     general_log.debug('{}: Enough matches ({}), adding {}, it\'s content and extracting links'.format(proc_name, matches, focus_url))
                     crawl_log.info('{}: Enough matches ({}), adding {}, it\'s content and extracting links'.format(proc_name, matches, focus_url))
 
                     # add a tuple (url: str, HTML: str)
-                    self._add_entry(focus_url, extractor.HTML)
+                    self._add_entry(focus_url, analyser.HTML)
 
                 # done
                 elif self._yielded_results.value + self._results.qsize() >= self._max_results:
@@ -257,9 +288,9 @@ class Spider():
                 general_log.debug('{}: Enqueuing filtered, not-traversed links'.format(proc_name))
 
                 # check for titles if they match any of the themes
-                if not self._sites_to_crawl.qsize() >= self._timeout * 1000:
+                if not self._sites_to_crawl.qsize() >= self._timeout * 100:
 
-                    links = filter(lambda link: link not in self._processed_urls, extractor.URLs)
+                    links = filter(lambda link: link not in self._processed_urls, analyser.URLs)
 
                     for link in links:
                         self._sites_to_crawl.put_nowait(link)
