@@ -18,7 +18,7 @@ from typing import Tuple, List
 from urllib.error import HTTPError, URLError
 from http.client import RemoteDisconnected, IncompleteRead
 import logging
-from http_tools import HTMLExtractor
+from http_tools import HTMLWrapper
 from lexical import HTMLAnalyser
 # from lexical import DocumentAnalayzer
 from socket import timeout
@@ -72,8 +72,13 @@ Result = Tuple[str, str]
 
 class Spider():
     def __init__(self, starting_urls: List[str] = ["http://www.independent.co.uk/",
-                                                   "http://www.telegraph.co.uk/"], themes: List[str] = [],
-                 max_results: int = 1000, timeout: int = 3, match_threshold=12, max_threads: int = cpu_count()):
+                                                   "http://www.telegraph.co.uk/"],
+                 themes: List[str] = [],
+                 max_results: int = 1000,
+                 timeout: int = 3,
+                 match_threshold=12,
+                 max_threads:
+                 int = cpu_count()):
 
         # settings
         assert max_threads >= 2, 'You need to allow for a minimum of 2 threads.'
@@ -96,14 +101,13 @@ class Spider():
         self._manager = SyncManager()
         self._manager.start()
 
-        self._sites_to_crawl_lock = self._manager.Lock()
-        self._sites_to_crawl = self._manager.dict()
+        self._sites_to_crawl = SharedQueue()
 
         self._yielded_results = self._manager.Value(c_int32, 0)
 
         # initial URLs, prevent duplication
         for url in set(starting_urls):
-            self._sites_to_crawl[url] = 1
+            self._sites_to_crawl.put(url)
         self._processed_urls = self._manager.list()
         self._counting_semaphore = Semaphore(self._max_threads)
         general_log.debug('Spider created')
@@ -115,7 +119,7 @@ class Spider():
     def _add_entry(self, *data: str):
         curr_proc = current_process().name
         general_log.debug('{}: Adding an entry, Entries atm: {}'.format(curr_proc, self._results.qsize()))
-        self._results.put_nowait(tuple(data))
+        self._results.put(tuple(data))
 
 
     def crawl(self):
@@ -156,25 +160,30 @@ class Spider():
                     self._yielded_results.value += 1
                     yield self._results.get()
 
+                general_log.warning('{}: successfully yielded {} / {} (max), entries atm: {} '.
+                                    format(
+                                        proc_name,
+                                        self._yielded_results.value,
+                                        self._max_results,
+                                        self._results.qsize()))
+
                 sleep(10)
 
         ###################################################################################
 
         # report
-        general_log.warning('{}: successfully yielded {} / {}'.format(proc_name, len(self._sites_to_crawl), self._max_results))
+        general_log.warning('{}: successfully yielded {} / {}'.format(proc_name, self._yielded_results.value, self._max_results))
 
         # kill remaining jobs, must be done here, in the main thread
         general_log.warning('{}: killing jobs'.format(proc_name))
 
 
         # when done
-        self._sites_to_crawl_lock.acquire()
         for job in jobs:
             if job.is_alive:
                 general_log.warning('{}: killing job {}'.format(proc_name, job.name))
                 sleep(2)
                 job.terminate()
-                self._sites_to_crawl_lock.release()
             else:
                 general_log.warning('{}: {} already dead'.format(proc_name, job.name))
 
@@ -196,30 +205,13 @@ class Spider():
 
         while (self._yielded_results.value + self._results.qsize()) < self._max_results:
 
-            general_log.info('{}: {} URLs to crawl'.format(proc_name, len(self._sites_to_crawl)))
-            general_log.info('{}: {} already processed'.format(proc_name, len(self._processed_urls)))
+            general_log.info('{}: {} URLs to crawl, {} / {} processed'.
+                             format(proc_name,
+                                    self._sites_to_crawl.qsize(),
+                                    len(self._processed_urls),
+                                    self._max_results))
 
-            # get next from from the dict where the URL is an arbitrary URL that
-            # has the highest frequency
-            # simulates collections.Counter ENTRY is <URL: str, frequency: int>
-
-            # lock is needed
-            self._sites_to_crawl_lock.acquire()
-
-            if len(self._sites_to_crawl) > 0:
-                most_freq = max(self._sites_to_crawl.values())
-                for url in self._sites_to_crawl.keys():
-                    if self._sites_to_crawl[url] == most_freq:
-                        focus_url = url
-                        # remove from Counter
-                        del(self._sites_to_crawl[url])
-                # release lock once done
-                self._sites_to_crawl_lock.release()
-
-            else:
-                self._sites_to_crawl_lock.release()
-                sleep(10)
-                continue
+            focus_url = self._sites_to_crawl.get()
 
             general_log.info('{}: Focus URL: {}'.format(proc_name, focus_url))
 
@@ -228,7 +220,7 @@ class Spider():
 
             try:
                 # instantiate an extractor object
-                extractor = HTMLExtractor(focus_url)
+                extractor = HTMLWrapper(focus_url)
 
                 if extractor.message != 'OK':
                     general_log.debug('{}: Message from {} was not "OK", continuing'.format(proc_name, extractor))
@@ -265,15 +257,14 @@ class Spider():
                 general_log.debug('{}: Enqueuing filtered, not-traversed links'.format(proc_name))
 
                 # check for titles if they match any of the themes
-                links = filter(lambda link: link not in self._processed_urls, extractor.URLs)
+                if not self._sites_to_crawl.qsize() >= self._timeout * 1000:
 
-                self._sites_to_crawl_lock.acquire()
-                for link in links:
-                    try:
-                        self._sites_to_crawl[link] += 1
-                    except (KeyError,ValueError):
-                        self._sites_to_crawl[link] = 1
-                self._sites_to_crawl_lock.release()
+                    links = filter(lambda link: link not in self._processed_urls, extractor.URLs)
+
+                    for link in links:
+                        self._sites_to_crawl.put_nowait(link)
+                else:
+                    general_log.debug('{}: {} URLs collected, cap reached, they weren\'t collected'.format(proc_name, self._sites_to_crawl.qsize()))
 
             else:
                 general_log.debug('{}: Not enough matches in {}, continuing'.format(proc_name, focus_url))

@@ -6,19 +6,16 @@ import db
 
 database = db.SQLite()
 
-themes=["A. Turing",
-        "computer science",
-        "computing",
-        "Turing",
-        "A Turing",
-        "Turing Machine",
-        "finate automata"]
+themes = ["A. Turing",
+          "computer science",
+          "computing",
+          "Turing",
+          "A Turing",
+          "Turing Machine",
+          "finate automata"]
 
+urls = [ "https://en.wikipedia.org/wiki/Alan_Turing" ]
 
-spider = Spider()
-
-
-
-for row in spider.crawl():
+for row in Spider(themes=themes, starting_urls=urls).crawl():
     # for sent in DocumentAnalayzer(extractor.text, themes=self._themes).matching_sents:
     print(row)
