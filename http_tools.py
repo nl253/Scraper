@@ -3,7 +3,7 @@
 
 import re
 from urllib.request import urlopen
-from urllib.parse import urljoin, uses_relative, urlparse
+from urllib.parse import urljoin, urlparse
 import logging
 from typing import Iterator
 from bs4 import BeautifulSoup
@@ -50,7 +50,13 @@ class HTMLExtractor():
     @property
     def URLs(self) -> Iterator[str]:
         # l.info('Retrieving and filtering links')
-        return filter(self._url_helper.validate_url, map(lambda regex_object: regex_object.group(0), re.compile("(?<=href=\")https?.*?(?=\")").finditer(self.HTML)))
+        links = list(set(re.compile(r'(?<=href=").*?(?=")', flags=re.UNICODE).findall(self.HTML)))
+        parsed_focus_url = urlparse(self.URL)
+        for i in range(len(links)):
+            parsed = urlparse(links[i])
+            if parsed.path and not parsed.netloc and not parsed.scheme:
+                links[i] = urljoin(parsed_focus_url.scheme + "://www." + parsed_focus_url.netloc, parsed.path)
+        return filter(self._url_helper.validate_url, links)
 
     @property
     def code_status(self) -> int:

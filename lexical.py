@@ -54,7 +54,9 @@ class HTMLAnalyser():
 
     @property
     def theme_count(self) -> int:
+        """Will actually accept and count regular expressions.
+        """
         count = 0
         for theme in self._themes:
-            count += self._html.count(theme)
+            count += len(re.findall(theme, self._html))
         return count
