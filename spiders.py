@@ -2,52 +2,67 @@
 # -*- coding: utf-8 -*-
 
 # TODO
-# 1. make sure there is one thread that yields the results and goes to sleep if
-#   there aren't any
-# 3. rethink the logic
-# 4. possibly use Pool
-# 5. get rid of deadlocks, fix it
-# 6. use requests if it helps
-# 7. parsing with lxml, it's faster
-# 8. output with sqlite3 or redis or mongo or mysql or csv
-# 9. implement a timeout, use the time module
-# 10. join relative URLs
-# 11.
+# 1. export module
+#   - output with
+#           * sqlite3
+#           * redis
+#           * mongo
+#           * mysql
+#           * csv
+#
+# 2. expand the analysis module
+#   - parsing with lxml, it's faster
+#    (but use regex for simple tasks
+#     because it's faster than both)
+#
+# 3.
 
-from typing import Tuple, List
+
+from typing import Tuple, List, Iterable
 from urllib.error import HTTPError, URLError
 from http.client import RemoteDisconnected, IncompleteRead
 import logging
 from analysis import HTMLAnalyser
-# from lexical import DocumentAnalayzer
 from socket import timeout
 from ssl import CertificateError
 from multiprocessing import cpu_count, Process
-from multiprocessing import Queue as SharedQueue
-from multiprocessing import Semaphore, current_process
-from multiprocessing.managers import SyncManager
-from time import sleep, localtime, perf_counter
-from ctypes import c_int32
+from multiprocessing import Condition as ProcessCondition
+from multiprocessing import Queue as SharedProcessQueue
+from multiprocessing import current_process, active_children
+from multiprocessing import Semaphore as ProcessSemaphore
+from multiprocessing.managers import SyncManager as ProcessSyncManager
+from logging import getLogger
+from signal import pthread_kill
+import threading
+from threading import current_thread
+from queue import Empty, Full
+# from concurrent.futures import ThreadPoolExecutor
+from threading import Lock as ThreadLock
+from threading import Condition as ThreadCondition
+from threading import Semaphore as ThreadSemaphore
+from time import sleep
+from ctypes import c_int32, c_float
 
 logging.basicConfig(
     level=logging.DEBUG,
     filemode='w',
-    format='%(threadName)s %(module)s %(levelname)s : %(asctime)s : %(lineno)s : %(message)s.',
+    format='%(processName)s %(threadName)s %(module)s %(levelname)s [%(asctime)s] [%(lineno)s] %(message)s.',
     datefmt="%M:%S")
 
 # GENERAL
-general_log = logging.getLogger(name=__name__)
+general_log = getLogger(name=__name__)
 
 # LOG crawled WEBSITES
-crawl_log = logging.getLogger(name='crawled')
+crawl_log = getLogger(name='crawled')
 crawl_log_handler = logging.FileHandler('crawled.log')
 crawl_log_handler.setFormatter(logging.Formatter('%(message)s.'))
 crawl_log.addHandler(crawl_log_handler)
 
 # INFO for progress
 file_info_handler = logging.FileHandler('pylog.log')
-file_info_handler.setFormatter(logging.Formatter('%(threadName)s %(module)s %(levelname)s : %(asctime)s : %(lineno)s : %(message)s.'))
-file_info_handler.setLevel(logging.INFO)
+file_info_handler.setFormatter(logging.Formatter(
+    '%(processName)s %(threadName)s %(module)s %(levelname)s [%(asctime)s] [%(lineno)s] %(message)s.'))
+file_info_handler.setLevel(logging.DEBUG)
 
 # WARNING
 warning_stream_handler = logging.StreamHandler()
@@ -70,235 +85,215 @@ general_log.addHandler(critical_stream_handler)
 Result = Tuple[str, str]
 
 class Spider():
-    def __init__(self, starting_urls: List[str] = ["http://www.independent.co.uk/",
+    """Asynchronous, multithreading and multiprocessing iterable spider.
+    """
+    def __init__(self, starting_urls: Iterable[str] = ["http://www.independent.co.uk/",
                                                    "http://www.telegraph.co.uk/"],
                  themes: List[str] = [],
                  max_results: int = 1000,
-                 timeout: int = 3,
+                 timeout: int = 3000,
                  match_threshold=12,
-                 max_threads:
-                 int = cpu_count()):
+                 max_queue_size: int = 1000,
+                 max_child_processes: int = 3,
+                 empty_links_queue_timeout: int = 30,
+                 max_threads: int = cpu_count()):
 
         # settings
+        self._max_queue_size = max_queue_size
+
         assert max_threads >= 2, 'You need to allow for a minimum of 2 threads.'
-        self._max_threads = max_threads
+        self._max_threads: int = max_threads
+
+        self._max_child_proc: int = max_child_processes
 
         assert max_results > 0, 'Max entries needs to be a natural number.'
-        self._max_results = max_results
+        self._max_results: int = max_results
 
-        self._timeout = timeout
+        assert timeout > 200, 'Timout needs to be above 200'
+        self._timeout: int = timeout
 
-        self._themes = themes
+        self._themes: List[str] = themes
+
+        assert empty_links_queue_timeout > 10, 'Empty links-queue timout needs to be above 10'
+        self._no_links_timout: int = empty_links_queue_timeout
 
         # min matches on a page to add entries and links
-        self._match_threshold = match_threshold
-
-        # stack to store crawled data as tuples
-        self._results = SharedQueue()
+        self._match_threshold: int = match_threshold
 
         # initialise
-        self._manager = SyncManager()
+        self._manager = ProcessSyncManager()
         self._manager.start()
 
-        self._sites_to_crawl = SharedQueue()
+        # stack to store crawled data as tuples
+        self._results = SharedProcessQueue(self._max_results)
 
-        self._yielded_results = self._manager.Value(c_int32, 0)
+        self._sites_to_crawl = SharedProcessQueue(self._max_queue_size)
+
+        self._yielded_counter = self._manager.Value(c_int32, 0)
 
         # initial URLs, prevent duplication
         for url in set(starting_urls):
             self._sites_to_crawl.put(url)
+
         self._processed_urls = self._manager.list()
-        self._counting_semaphore = Semaphore(self._max_threads)
-        general_log.debug('Spider created')
-        general_log.info("Max entries set to {}".format(max_results))
-        general_log.info("Themes set to {}".format(themes))
-        general_log.info("Max threads set to {}".format(max_threads))
-        general_log.info("Match threshold set to {}".format(match_threshold))
+        self._inactive_children = ProcessSemaphore(self._max_child_proc)
 
     def _add_entry(self, *data: str):
-        curr_proc = current_process().name
-        general_log.debug('{}: Adding an entry, Entries atm: {}'.format(curr_proc, self._results.qsize()))
-        self._results.put_nowait(tuple(data))
+        """Used by child processes to add gathered entries into temp storage (self._results: SharedProcessQueue).
+        """
+        general_log.debug(
+            f'{current_process().name} {current_thread().name} Adding an entry, Entries atm: {self._results.qsize()}')
+        self._results.put(tuple(data))
 
     def crawl(self):
+        """The method to be called directly by the user, all others are helper-methods.
+        """
+
+        # keep track of active processes to kill later
+        children: List[Process] = [Process(target=self._spawn_crawl_proc, name=f"Process {i}") for i in range(self._max_child_proc)]
 
         # import ipdb; ipdb.set_trace()  # XXX BREAKPOINT
 
-        # HELPER VARIABLES
-        proc_name = current_process().name
+        for child in children:
+            general_log.warning('{current_process().name} Starting another working child')
+            child.start()
+            sleep(5)
 
-        # keep track of active processes to kill later
-        jobs = []
+        any_results_pending = ProcessCondition()
 
-        # for timeout
-        scrape_start_min = localtime().tm_min
-
-        while True:
-
-            stats = (perf_counter(), self._yielded_results.value, self._sites_to_crawl.qsize(), self._results.qsize())
-
-            # done
-            if self._yielded_results.value >= self._max_results:
-                break
-
-            # timeout
-            elif (localtime().tm_min - scrape_start_min > self._timeout):
-                  general_log.warning('Timout')
-                  break
-
-            # not done yet
-            # we have semaphores - assign a job
-            elif self._counting_semaphore.get_value() > 0:
-
-                general_log.warning('{}: Semaphore free, starting another job, '.format(proc_name))
-
-                job = Process(target=self._crawl)
-
-                # store in a list to keep track and kill
-                jobs.append(job)
-
-                # start the last job on list
-                jobs[jobs.index(job)].start()
-
-            else:
-
-                # place to test and sanitize and return results ?
-
-                while not self._results.empty():
-                    self._yielded_results.value += 1
-                    yield self._results.get()
-
-                general_log.warning('{}: Statistics'.format(proc_name))
-
-                general_log.warning('{}: successfully yielded {} / {} (max), entries atm: {} '.
-                                    format(
-                                        proc_name,
-                                        self._yielded_results.value,
-                                        self._max_results,
-                                        self._results.qsize()))
-
-                try:
-                    general_log.warning('{}: Average yielded: [{} / sec], [{} / min]'.
-                                    format(
-                                        (self._yielded_results.value - stats[1]) / (perf_counter() - stats[0]),
-                                        60 * ((self._yielded_results.value - stats[1]) / (perf_counter() - stats[0]))
-                                    ))
-
-                    general_log.warning('{}: Average entries added: [{} / sec], [{} / min]'.format(
-                        proc_name,
-                        (self._yielded_results.value + self._results.qsize() - (stats[3] + stats[1]))  / (perf_counter() - stats[0]),
-                        60 * (((self._results.qsize() + self._yielded_results.value) - (stats[3] + stats[1])) / (perf_counter() - stats[0]))
-                    ))
-
-                    general_log.warning('{}: Average links enqueued: [{} / sec], [{} / min]'.format(
-                        proc_name,
-                        (self._sites_to_crawl.qsize() - stats[2]) / (perf_counter() - stats[0]),
-                        60 * ((self._sites_to_crawl.qsize() - stats[2]) / (perf_counter() - stats[0]))
-                    ))
-
-                except IndexError:
-                    pass
-
-
-                sleep(20)
-
-        ###################################################################################
+        # loop while enough results havent been yielded
+        while self._yielded_counter.value < self._max_results:
+            any_results_pending.acquire()
+            # block until there is something to yield
+            any_results_pending.wait_for(lambda : self._results.qsize() > 0)
+            while not self._results.empty():
+                self._yielded_counter.value += 1
+                yield self._results.get()
 
         # report
-        general_log.warning('{}: successfully yielded {} / {}'.format(proc_name, self._yielded_results.value, self._max_results))
+        general_log.warning(
+            f'{current_process().name} Successfully yielded {self._yielded_counter.value} / {self._max_results}')
 
-        # kill remaining jobs, must be done here, in the main thread
-        general_log.warning('{}: killing jobs'.format(proc_name))
+        # kill remaining children, must be done here, in the main thread
+        general_log.warning('{current_process().name} Killing children')
 
         # when done
-        for job in jobs:
-            if job.is_alive:
-                general_log.warning('{}: killing job {}'.format(proc_name, job.name))
-                sleep(2)
-                job.terminate()
-            else:
-                general_log.warning('{}: {} already dead'.format(proc_name, job.name))
+        for child in filter(lambda child: not child.is_alive()):
+            general_log.warning(f'{current_process().name} Killing child {child.name}')
+            sleep(2)
+            child.terminate()
 
         # when esceped from the loop
-        general_log.warning('{}: Scraping finished, all jobs dead'.format(proc_name))
+        general_log.warning(f'{current_process().name} Scraping finished, all children dead')
 
-    def _crawl(self):
+    def _thread_scrape_next_url(self):
+
+            # keep track of 'queue misses'
+            misses = 0
+
+            while self._yielded_counter.value + self._results.qsize() <= self._max_results:
+
+                general_log.warning(f'{current_process().name} {current_thread().name} Yielded {self._yielded_counter.value} / {self._max_results}')
+
+                general_log.warning(f'{current_process().name} {current_thread().name} Produced {self._yielded_counter.value + self._results.qsize()} results out of / {self._max_results}')
+
+                general_log.warning(f'{current_process().name} {current_thread().name} {self._results.qsize()} items waiting to be yielded')
+
+                # fetch next
+                general_log.warning(f'{current_process().name} {current_thread().name} Attempting to get another link off the _sites_to_crawl: {self._sites_to_crawl}')
+                try:
+                    focus_url = self._sites_to_crawl.get()
+                    misses = 0  # reset
+                except Empty as e:
+                    misses += 1
+                    if misses > 5:  # 5 times tried to get from queue with no effect, finish thread
+                        general_log.warning(
+                            f'{current_process().name} {current_thread().name} 5 or more failures to get from self._sites_to_crawl. Breaking')
+                        break
+                    else:
+                        sleep(5)
+                        continue
+
+                general_log.warning(f'{current_process().name} {current_thread().name} Focus URL: {focus_url} taken off {self._sites_to_crawl} which has {self._sites_to_crawl.qsize()} items left')
+
+                # add to traversed to prevent visitng twice
+                general_log.warning(
+                    f'{current_process().name} {current_thread().name} Appending {focus_url} to _processed_urls which accumulated {len(self._processed_urls)} items')
+                self._processed_urls.append(focus_url)
+
+                try:
+                    # instantiate an analyser object
+                    general_log.warning(f'{current_process().name} {current_thread().name} Making an HTMLAnalyser')
+                    analyser = HTMLAnalyser(focus_url, self._themes)
+
+                    if analyser.message != 'OK':
+                        general_log.debug(f'{current_process().name} {current_thread().name} Message from {focus_url} was not "OK"')
+                        continue
+
+                    # count matches on the focus page
+                    no_matches = analyser.theme_count
+                    general_log.warning(f'{current_process().name} {current_thread().name} Number of matches is {no_matches}')
+
+                except (IncompleteRead,HTTPError,URLError,RemoteDisconnected,UnicodeDecodeError,UnicodeEncodeError,timeout,CertificateError) as e:
+                    general_log.error(f'{current_process().name} {current_thread().name} {e} while requesting a response from {focus_url}')
+                    continue
+
+                if not no_matches >= self._match_threshold:
+                    general_log.info(f'{current_process().name} {current_thread().name} Not enough matches in {focus_url}, continuing')
+                    continue
+
+                self._add_entry(focus_url, analyser.HTML)
+
+                if not self._sites_to_crawl.full():
+                    # ensure you only traverse once
+                    general_log.debug('{current_process().name} {current_thread().name} Enqueuing filtered, not-traversed links')
+                    for link in filter(lambda link: link not in self._processed_urls, analyser.URLs):
+                        self._sites_to_crawl.put(link)
+                else:
+                    general_log.warning(f'{current_thread().name} _sites_to_crawl: Queue[str] is full')
+
+            # on break
+            general_log.warning(f'{current_thread().name} Enough entries gathered or timout has occured, breaking thread')
+
+    def _spawn_crawl_proc(self):
         """To be run by each process thread.
         At the end the semaphore is released.
         """
 
-        # HELPER VARIABLES
-        proc_name = current_process().name
+        # acquire by the main thread on every child-process on start()
+        general_log.warning(f'{current_process().name} {current_thread().name} Attempting to acquire a semaphore by a crawler. Current value: {self._inactive_children.get_value()}')
+        self._inactive_children.acquire()
+        general_log.warning(f'{current_process().name} {current_thread().name} Semaphore acquired by a crawler. Current value: {self._inactive_children.get_value()}')
 
-        self._counting_semaphore.acquire()
+        general_log.warning(f'{current_process().name} {current_thread().name} Creating threads')
 
-        general_log.warning('{}: Semaphore acquired by a crawler'.format(current_process().name))
+        threads = [threading.Thread(target=self._thread_scrape_next_url, name=f"Thread {i}") for i in range(self._max_threads)]
 
-        while (self._yielded_results.value + self._results.qsize()) < self._max_results:
+        general_log.warning(f'{current_process().name} {current_thread().name} Threads: {threads}')
 
-            general_log.info('{}: {} URLs to crawl, {} / {} processed'.
-                             format(proc_name,
-                                    self._sites_to_crawl.qsize(),
-                                    len(self._processed_urls),
-                                    self._max_results))
+        for thread in threads:
+            general_log.warning(f'{current_process().name} {current_thread().name} Starting thread: {thread.name}')
+            sleep(1)  # delay between spawning
+            thread.start()
 
-            focus_url = self._sites_to_crawl.get()
+        # the main thread within this child-process acquires a `Lock` which
+        # needs to last utill all child-threads finished (dead)
+        enough_gathered = ThreadCondition()
 
-            # add to traversed to prevent visitng twice
-            self._processed_urls.append(focus_url)
+        general_log.warning(f'{current_process().name} {current_thread().name} Acquiring enough_gathered condition')
 
-            general_log.info('{}: Focus URL: {}'.format(proc_name, focus_url))
+        enough_gathered.acquire()
 
-            try:
-                # instantiate an analyser object
-                analyser = HTMLAnalyser(focus_url, self._themes)
+        general_log.warning(f'{current_process().name} {current_thread().name} Waiting for enough_gathered condition, timeout set to {self._timeout}')
 
-                if analyser.message != 'OK':
-                    general_log.debug('{}: Message from {} was not "OK", continuing'.format(proc_name, analyser))
-                    continue
+        enough_gathered.wait_for(lambda : self._yielded_counter.value + self._results.qsize() >= self._max_results, timeout=self._timeout)
 
-                # count matches on the focus page
-                matches = analyser.theme_count if all(map(bool, self._themes)) else self._match_threshold + 1
+        for thread in threads:
+            general_log.warning(
+                f'{current_process().name} {current_thread().name} Enough data produced, killing threads')
+            sleep(2)
+            pthread_kill(thread.ident)
 
-            except (IncompleteRead,HTTPError,URLError,RemoteDisconnected,UnicodeDecodeError,UnicodeEncodeError,timeout,CertificateError) as e:
-                general_log.error('{}: {} while requesting a response from {}'.format(proc_name, e, focus_url))
-                # general_log.error('{}: {}'.format(proc_name, extract_tb(sys.last_traceback)[-1]))
-                general_log.debug('{}: Continuing'.format(proc_name))
-                continue
+        general_log.warning('{current_process().name} {current_thread().name} crawler is relasing a semaphore')
 
-
-            if matches >= self._match_threshold:
-
-                if (self._yielded_results.value + self._results.qsize()) < self._max_results and type(analyser.HTML) is str and len(analyser.HTML) > 10:
-
-                    general_log.debug('{}: Enough matches ({}), adding {}, it\'s content and extracting links'.format(proc_name, matches, focus_url))
-                    crawl_log.info('{}: Enough matches ({}), adding {}, it\'s content and extracting links'.format(proc_name, matches, focus_url))
-
-                    # add a tuple (url: str, HTML: str)
-                    self._add_entry(focus_url, analyser.HTML)
-
-                # done
-                elif self._yielded_results.value + self._results.qsize() >= self._max_results:
-                    break
-
-                else:
-                    continue
-
-                # ensure you only traverse once
-                general_log.debug('{}: Enqueuing filtered, not-traversed links'.format(proc_name))
-
-                # check for titles if they match any of the themes
-                if not self._sites_to_crawl.qsize() >= self._timeout * 100:
-
-                    links = filter(lambda link: link not in self._processed_urls, analyser.URLs)
-
-                    for link in links:
-                        self._sites_to_crawl.put_nowait(link)
-                else:
-                    general_log.debug('{}: {} URLs collected, cap reached, they weren\'t collected'.format(proc_name, self._sites_to_crawl.qsize()))
-
-            else:
-                general_log.debug('{}: Not enough matches in {}, continuing'.format(proc_name, focus_url))
-
-        general_log.warning('{}: crawler is relasing a semaphore'.format(proc_name))
-        self._counting_semaphore.release()
+        self._inactive_children.release()
