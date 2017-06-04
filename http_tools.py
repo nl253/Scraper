@@ -4,7 +4,7 @@
 # NO DEPENDENCIES
 
 import re
-from typing import Pattern, Dict
+from typing import Pattern, Dict, Optional
 from urllib.request import urlopen
 from urllib.parse import urljoin, urlparse
 import logging
@@ -34,14 +34,14 @@ class HTTPValidator:
             '(\.((zip)|(png)|(jpg)|(jpeg)|(tar)|(docx)|(tex)|(css)|(js)|(rar)|(pdf)|(docx)))$')
 
     @staticmethod
-    def validate_URL(URL: str) -> bool:
+    def validate_URL(self, URL: str) -> bool:
         if self._url_regex.search(URL) and not self._url_neg_regex.search(URL):
             return True
         return False
 
 class HTMLWrapper:
     def __init__(self, URL: str):
-        self._response: HTTPResponse = urlopen(URL, timeout=15)
+        self._response: Union[HTTPResponse, addinfourl] = urlopen(URL, timeout=15)
         self._html = None
         self._info: HTTPMessage = self._response.info()
         self._validator: HTTPValidator = HTTPValidator()
@@ -69,7 +69,7 @@ class HTMLWrapper:
         return self._response.url
 
     @property
-    def title(self) -> str:
+    def title(self) -> Optional[str]:
         return re.compile("(?<=<title>).*?(?=</title>)").search(
             self._response.peek().decode('utf-8')).group(0)
 

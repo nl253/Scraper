@@ -1,5 +1,5 @@
 import unittest
-from spiders import Spider
+from spiders import BaseSpider, ThemeSpider
 import faker
 import logging
 
@@ -11,12 +11,12 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-class SpiderVerifier():
-    def __init__(self, spider: Spider):
+class BaseSpiderVerifier():
+    def __init__(self, spider: BaseSpider):
         self._spider = spider
 
     @property
-    def spider(self) -> Spider:
+    def spider(self) -> BaseSpider:
         return self._spider
 
     def verify_constructor(self):
@@ -70,12 +70,12 @@ class SpiderVerifier():
             self.spider._max_results < 9999999,\
             'Max results must be an int between 0 and 9999999. {self.spider._max_results} is not valid.'
 
-class SpiderTester(unittest.TestCase):
+class BaseSpiderTester(unittest.TestCase):
 
 
     def test_constructor(self):
 
-        self.assertTrue(SpiderVerifier(Spider()))
+        self.assertTrue(BaseSpiderVerifier(BaseSpider()))
 
 
         return True

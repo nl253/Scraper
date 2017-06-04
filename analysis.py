@@ -7,7 +7,7 @@
 # - lxml
 
 from textblob.en import polarity, subjectivity
-from typing import List, Generator
+from typing import List, Generator, Optional
 import logging
 import re
 from preprocessing import StringSanitizer
@@ -45,19 +45,17 @@ class ChunkAnalyser():
     @property
     def lexical_diversity(self) -> float:
         words: List[str] = list(self.iwords)
-        return len(set(words)) / len(words)
-
-    @property
-    def iwords(self) -> Generator[str, None, None]:
-        for word in re.finditer("[A-Za-z]{2,}", self._text):
-            yield word.group(0)
+        try:
+            len(set(words)) / len(words)
+        except ArithmeticError:
+            return 0
 
 
 class DocumentAnalayzer(ChunkAnalyser):
     def __init__(self, text: str):
         super().__init__(text)
 
-    def imatching_sents(self, themes: List[str], context=500) -> str:
+    def imatching_sents(self, themes: List[str], context=500) -> Iterator[Optional[str]]:
         for theme in set(map(str.lower, themes)):
             for matching_str in re.compile(
                 '(?:\.[\n\t ]{1,2})[A-Z].{,' + str(
@@ -67,21 +65,22 @@ class DocumentAnalayzer(ChunkAnalyser):
                 yield StringSanitizer(matching_str.group(0)).sanitize().text
 
 
-class HTMLAnalyser(HTMLWrapper,DocumentAnalayzer):
+class HTMLAnalyser(HTMLWrapper, DocumentAnalayzer):
     def __init__(self, URL: str):
         super().__init__(URL)
         self._soup = BeautifulSoup(self.HTML, 'lxml')
         super().__init__(self._soup.get_text())
 
     def tag_count(self, tag: str) -> int:
-        return len(self.get_tags(tag))
+        result = len(self.get_tags(tag))
+        return len(result) if result else 0
 
-    def get_tags(self, tag: str) -> List[str]:
+    def get_tags(self, tag: str) -> Optional[List[str]]:
         return re.compile(
             "<{}[ >].*?</{}>".format(tag, tag), flags=re.I | re.M).findall(self.html)
 
     def get_class(self, class_name: str):
         raise NotImplementedError
 
-    def __getitem__(self, key: str) -> List[str]:
+    def __getitem__(self, key: str) -> Optional[List[str]]:
         return self.get_tags(key)

@@ -44,7 +44,7 @@ from analysis import HTMLAnalyser, HTMLWrapper
 # DEV UTILS
 from _test_spiders import SpiderVerifier
 from logutils import *
-from typing import Tuple, List, Iterable, Union
+from typing import Tuple, List, Iterable, Union, Any
 import logging
 
 class BaseSpider():
@@ -135,18 +135,19 @@ class BaseSpider():
 
     @abstractmethod
     @classmethod
-    def preprocess(URL: str, HTML: str, headers: dict) -> Tuple[str, str, dict]:
+    def preprocess(URL: str, HTML: str, headers: dict) -> Tuple[Any, ...]:
         """Apply to each resutl, needs to have this exact method signature,
         it aims to prepare the gathered data to be yielded.
         """
         proc_thread_debug(f'Preprocessing an result')
-        return tuple(URL, HTML, headers)
+        return tuple([URL, HTML, headers])
 
     def _add_result(self, URL: str, HTML: str, headers: dict):
-        """Used by child processes to add gathered entries into temp storage (self._results: SharedProcessQueue).
+        """Used by child processes to add gathered entries into temp storage
+        (self._results: SharedProcessQueue).
         The data is passed on to preprocess before adding an result.
         """
-        self._results.put(BaseSpider.preprocess(data))
+        self._results.put(BaseSpider.preprocess(URL, HTML, headers))
         proc_thread_debug(f'Added an result, Entries atm: {self._results.qsize()}')
 
     @property
@@ -158,7 +159,9 @@ class BaseSpider():
         """
 
         # keep track of active processes to kill later
-        children: List[Process] = [Process(target=self._spawn_new_child, name=f"Process {i}") for i in range(self._max_children)]
+        children: List[Process] = [
+            Process(target=self._spawn_new_child, name=f"Process {i}") \
+            for i in range(self._max_children)]
 
         for child in children:
             proc_thread_warn(f'Starting another working child')
@@ -220,14 +223,18 @@ class BaseSpider():
 
             while self._yielded_counter.value + self._results.qsize() <= self._max_results:
 
-                proc_thread_warn(f'Yielded {self._yielded_counter.value} / {self._max_results}')
+                proc_thread_warn(
+                    f'Yielded {self._yielded_counter.value} / {self._max_results}')
 
-                proc_thread_warn(f'Produced {self._yielded_counter.value + self._results.qsize()} results out of / {self._max_results}')
+                proc_thread_warn(
+                    f'Produced {self._yielded_counter.value + self._results.qsize()} results out of / {self._max_results}')
 
-                proc_thread_warn(f'{self._results.qsize()} items waiting to be yielded')
+                proc_thread_warn(
+                    f'{self._results.qsize()} items waiting to be yielded')
 
                 # fetch next
-                proc_thread_warn(f'Attempting to get another link off the _url_queue: {self._url_queue}')
+                proc_thread_warn(
+                    f'Attempting to get another link off the _url_queue: {self._url_queue}')
 
                 try:
                     focus_url = self.next_URL
@@ -243,23 +250,25 @@ class BaseSpider():
                         sleep(5)
                         continue
 
-                proc_thread_warn(f'Focus URL: {focus_url} taken off URLs which has {len(self.URLs)} items left')
+                proc_thread_warn(
+                    f'Focus URL: {focus_url} taken off URLs which has {len(self.URLs)} items left')
 
                 try:
                     # instantiate an HTMLWrapper object
                     proc_thread_warn(f'Making an HTMLWrapper')
                     wrapper = HTMLWrapper(URL)
 
-                except (IncompleteRead,HTTPError,URLError,RemoteDisconnected,timeout,CertificateError) as e:
+                except (IncompleteRead, HTTPError, URLError,
+                        RemoteDisconnected, timeout, CertificateError) as e:
                     proc_thread_err(f'{e} while requesting a response from {focus_url}')
                     continue
 
-                except (UnicodeDecodeError,UnicodeEncodeError) as e:
+                except (UnicodeDecodeError, UnicodeEncodeError) as e:
                     proc_thread_err(f'{e} while requesting a response from {focus_url}')
                     continue
 
                 if not self._results.full():
-                    if BaseSpider.test_result(wrapper.URL, wrapper.HTML, wrapper.headers):
+                    if self.test_result(wrapper.URL, wrapper.HTML, wrapper.headers):
                         self._add_result(focus_url, wrapper.HTML, wrapper.headers)
                         for URL in wrapper.iURLs:
                             self._try_add_URL(URL)
@@ -276,9 +285,8 @@ class BaseSpider():
         """
         raise NotImplementedError
 
-    def _try_add_URL(URL: str) -> bool:
+    def _try_add_URL(self, URL: str) -> bool:
         proc_thread_debug(f'Trying to enque {URL}')
-
         # ensure you only traverse once
         if len(self._URLs) > 0 and URL not in self.URLs:
             self._add_URL(URL)
@@ -292,15 +300,19 @@ class BaseSpider():
         """
 
         # acquire by the main thread on every child-process on start()
-        proc_thread_warn(f'Attempting to acquire a semaphore by a crawler. Current value: {self._inactive_children.get_value()}')
+        proc_thread_warn(
+            f'Attempting to acquire a semaphore by a crawler. Current value: {self._inactive_children.get_value()}')
 
         self._inactive_children.acquire()
 
-        proc_thread_warn(f'Semaphore acquired by a crawler. Current value: {self._inactive_children.get_value()}')
+        proc_thread_warn(
+            f'Semaphore acquired by a crawler. Current value: {self._inactive_children.get_value()}')
 
         proc_thread_warn(f'Creating threads')
 
-        threads = [Thread(target=self._thread_scrape_next_url, name=f"Thread {i}") for i in range(self._max_threads)]
+        threads = [
+            Thread(target=self._thread_scrape_next_url, name=f"Thread {i}") \
+            for i in range(self._max_threads)]
 
         proc_thread_warn(f'Threads: {threads}')
 
@@ -329,7 +341,7 @@ class BaseSpider():
 
     @classmethod
     @abstractmethod
-    def test_result(URL: str, HTML: str, headers: dict) -> bool:
+    def test_result(self, URL: str, HTML: str, headers: dict) -> bool:
         """To be overriden by a boolean-return function that takes these exact args.
         This is repetedly applies to all scraped results and determines if
         links from that website should be added to `to be scraped` as well
@@ -366,7 +378,7 @@ class ThemeSpider(BaseSpider):
             max_threads)
 
     @classmethod
-    def test_result(URL: str, HTML: str, headers: dict) -> bool:
+    def test_result(self, URL: str, HTML: str, headers: dict) -> bool:
 
         try:
             # instantiate an analyser object
@@ -377,23 +389,27 @@ class ThemeSpider(BaseSpider):
             no_matches = analyser.theme_count(self._themes)
             proc_thread_warn(f'Number of matches is {no_matches}')
 
-        except (IncompleteRead,HTTPError,URLError,RemoteDisconnected,timeout,CertificateError) as e:
-            proc_thread_err(f'{e} while requesting a response from {focus_url}')
+        except (IncompleteRead,HTTPError,URLError,
+                RemoteDisconnected,timeout,CertificateError) as e:
+            proc_thread_err(
+                f'{e} while requesting a response from {analyser.URL}')
             return False
 
         except (UnicodeDecodeError,UnicodeEncodeError) as e:
-            proc_thread_err(f'{e} while requesting a response from {focus_url}')
+            proc_thread_err(
+                f'{e} while requesting a response from {analyser.URL}')
             return False
 
         if not no_matches >= self._match_threshold:
-            proc_thread_info(f'Not enough matches in {focus_url}, continuing')
+            proc_thread_info(
+                f'Not enough matches in {analyser.URL}, continuing')
             return False
 
         return True
 
-    def preprocess(self, URL: str, HTML: str, headers: dict) -> Tuple[str, str, dict]:
+    def preprocess(self, URL: str, HTML: str, headers: dict) -> Tuple[str, str, Dict[str, str]]:
         """Prepare the gathered data to be yielded.
         """
         # TODO
         proc_thread_debug(f'Preprocessing an result')
-        return tuple(URL, HTML, headers)
+        return tuple([URL, HTML, headers])
