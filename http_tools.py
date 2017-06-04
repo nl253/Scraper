@@ -4,10 +4,11 @@
 # NO DEPENDENCIES
 
 import re
-from typing import Pattern
+from typing import Pattern, Dict
 from urllib.request import urlopen
 from urllib.parse import urljoin, urlparse
 import logging
+from http.client import HTTPMessage, HTTPResponse
 from typing import Iterator, Tuple, Union, List
 # from preprocessing import HTMLSanitizer
 
@@ -18,11 +19,8 @@ logging.basicConfig(
 
 l = logging.getLogger(name=__name__)
 
-class HTMLWrapper():
-    def __init__(self, URL: str):
-        self._response = urlopen(URL, timeout=15)
-        self._html = None
-        self._info = self._response.info()
+class HTTPValidator:
+    def __init__(self):
         self._url_regex: Pattern = re.compile(
             r'^(?:http|ftp)s?://'  # http:// or https://
             # domain...
@@ -32,17 +30,24 @@ class HTMLWrapper():
             r'(?::\d+)?'  # optional port
             r'(?:/?|[/?]\S+)$', re.IGNORECASE)
 
-    def _validate_url(self, URL: str) -> bool:
-        assert type(URL) is str, 'URL is not str.'
-        # l.info('Filtering links that end with ".zip" or ".rar"')
-        # l.info('Filtering links through Django regex')
-        if self._url_regex.search(URL) and not re.compile(
-            '(\.((zip)|(png)|(jpg)|(jpeg)|(tar)|(docx)|(tex)|(css)|(js)|(rar)|(pdf)|(docx)))$').search(URL):
+        self._url_neg_regex: Pattern = re.compile(
+            '(\.((zip)|(png)|(jpg)|(jpeg)|(tar)|(docx)|(tex)|(css)|(js)|(rar)|(pdf)|(docx)))$')
+
+    @staticmethod
+    def validate_URL(URL: str) -> bool:
+        if self._url_regex.search(URL) and not self._url_neg_regex.search(URL):
             return True
         return False
 
+class HTMLWrapper:
+    def __init__(self, URL: str):
+        self._response: HTTPResponse = urlopen(URL, timeout=15)
+        self._html = None
+        self._info: HTTPMessage = self._response.info()
+        self._validator: HTTPValidator = HTTPValidator()
+
     @property
-    def URLs(self) -> Iterator[str]:
+    def iURLs(self) -> Iterator[str]:
         # l.info('Retrieving and filtering links')
         links: List[str] = list(set(re.compile(r'(?<=href=").*?(?=")',
                                     flags=re.UNICODE).findall(self.HTML)))
@@ -53,7 +58,7 @@ class HTMLWrapper():
                 links[i] = urljoin(
                     parsed_focus_url.scheme + "://www." + parsed_focus_url.netloc,
                     parsed.path)
-        return filter(self._validate_url, links)
+        return filter(self._validator.validate_URL, links)
 
     @property
     def code_status(self) -> int:
@@ -65,7 +70,7 @@ class HTMLWrapper():
 
     @property
     def title(self) -> str:
-        return re.compile("(?<=<title>).*(?=</title>)").search(
+        return re.compile("(?<=<title>).*?(?=</title>)").search(
             self._response.peek().decode('utf-8')).group(0)
 
     @property
@@ -95,8 +100,8 @@ class HTMLWrapper():
         return self._info.get_content_subtype()
 
     @property
-    def headers(self) -> List[Tuple[str, str]]:
-        return self._response.getheaders()
+    def headers(self) -> Dict[str, str]:
+        return dict(self._response.getheaders())
 
     @property
     def length(self) -> int:
@@ -109,9 +114,6 @@ class HTMLWrapper():
         return self.HTML
 
     def __contains__(self, item: Union[int, str]) -> bool:
-        if item in self.HTML:
-            return True
-        else:
-            return False
+        return True if item in self.HTML else False
 
 

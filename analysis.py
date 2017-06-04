@@ -4,6 +4,7 @@
 # DEPENDENCIES:
 # - textblob
 # - bs4
+# - lxml
 
 from textblob.en import polarity, subjectivity
 from typing import List, Generator
@@ -18,21 +19,28 @@ logging.basicConfig(
 	format='%(levelname)s:%(asctime)s  %(message)s')
 
 class ChunkAnalyser():
-    def __init__(self, text: str, themes: List[str]):
+    def __init__(self, text: str):
         self._text: str = text
-        self._themes: List[str] = themes
 
     @property
-    def theme_count(self) -> int:
-        return self._text.count(self._theme)
+    def text(self) -> str:
+        return self._text
+
+    def theme_count(self, themes: List[str]) -> int:
+        count: int = 0
+        for theme in themes:
+            results: List[str] = re.compile(theme).findall(self.text)
+            if results:
+                count += len(results)
+        return count
 
     @property
     def polarity(self) -> float:
-        return polarity(self._text)
+        return polarity(self.text)
 
     @property
     def subjectivity(self) -> float:
-        return subjectivity(self._text)
+        return subjectivity(self.text)
 
     @property
     def lexical_diversity(self) -> float:
@@ -46,13 +54,11 @@ class ChunkAnalyser():
 
 
 class DocumentAnalayzer(ChunkAnalyser):
+    def __init__(self, text: str):
+        super().__init__(text)
 
-    def __init__(self, text: str, themes: List[str]):
-        super().__init__(text, themes)
-
-    @property
-    def imatching_sents(self, context=500) -> str:
-        for theme in set(map(str.lower, self._themes)):
+    def imatching_sents(self, themes: List[str], context=500) -> str:
+        for theme in set(map(str.lower, themes)):
             for matching_str in re.compile(
                 '(?:\.[\n\t ]{1,2})[A-Z].{,' + str(
                     context) + '}' + theme + '.{,' + str(
@@ -61,39 +67,21 @@ class DocumentAnalayzer(ChunkAnalyser):
                 yield StringSanitizer(matching_str.group(0)).sanitize().text
 
 
-class HTMLAnalyser(HTMLWrapper):
-    def __init__(self, URL: str, themes: List[str]):
-        assert type(themes) is list and len(themes) > 0 and type(themes[0]) is str, \
-            'Themes is not List[str].'
+class HTMLAnalyser(HTMLWrapper,DocumentAnalayzer):
+    def __init__(self, URL: str):
         super().__init__(URL)
-        self._themes: List[str] = themes
-        self._text = None
+        self._soup = BeautifulSoup(self.HTML, 'lxml')
+        super().__init__(self._soup.get_text())
 
-    @property
-    def text(self) -> str:
-        if type(self._text) is not str:
-            self._text: str = BeautifulSoup(self.HTML, 'html.parser').get_text()
-        return self._text
-
-    @property
-    def theme_count(self) -> int:
-        count: int = 0
-        for theme in self._themes:
-            results: List[str] = re.compile(theme).findall(self.HTML)
-            if results:
-                count += len(results)
-        return count
-
-    @property
     def tag_count(self, tag: str) -> int:
         return len(self.get_tags(tag))
 
     def get_tags(self, tag: str) -> List[str]:
         return re.compile(
-            "<{}[ >].*?</{}>".format(tag, tag), flags=re.I | re.M).findall(self._html)
+            "<{}[ >].*?</{}>".format(tag, tag), flags=re.I | re.M).findall(self.html)
 
     def get_class(self, class_name: str):
-        return [i.group(0) for i in re.compile(r"<([a-zA-Z]+) ([a-zA-Z]{2,}=['\"]\w{2,}['\"]) )*?class=[\"']{}[\"'].*?</\1>".format(class_name), flags=re.I).finditer(self._html)]
+        raise NotImplementedError
 
     def __getitem__(self, key: str) -> List[str]:
         return self.get_tags(key)
