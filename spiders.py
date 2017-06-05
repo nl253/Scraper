@@ -153,13 +153,13 @@ class BaseSpider(metaclass=ABCMeta):
 		proc_thread_debug(f'Added an result, Entries atm: {self._results.qsize()}')
 
 	@abstractmethod
-	def produce(self) -> Optional[Any]:
+	def produce(self, item: Any) -> Optional[Any]:
 		"""Applies to every result AFTER preprocesing and AFTER it has
 		been places on queue of ready-results.
 		May be used to export to a database, or printed to STDOUT.
 		NEEDS TO BE OVERRIDDEN.
 		"""
-		return self._results.get()
+		return item
 
 	@property
 	def processed_URLs(self) -> List[str]:
@@ -190,7 +190,7 @@ class BaseSpider(metaclass=ABCMeta):
 			if self._results.qsize() > 0:
 				while not self._results.empty():
 					self._yielded_counter.value += 1
-					yield self.produce()
+					yield self.produce(self._results.get())
 			# elif all child-processes (and their threads) are dead
 			elif all(map(lambda child: not child.is_alive(), children)):
 				break
@@ -380,7 +380,8 @@ class BaseSpider(metaclass=ABCMeta):
 		# call clean-up method
 		return self._child_end(threads)
 
-	def _child_end(self, threads: List[Thread]):
+	@staticmethod
+	def _child_end(threads: List[Thread]):
 		"""Called by the main thread, kills all spawned
 		threads, realeases the semaphore acquired on child creation
 		 and cleans up.
@@ -411,13 +412,16 @@ class ThemeSpider(BaseSpider):
 	to the constructor.
 	"""
 
+	def produce(self, item: Any) -> Optional[Any]:
+		open('theme_scrape.txt', mode='w', encoding='utf-8').write(str(item))
+
 	def __init__(self, starting_urls: Iterable[str],
 	             themes: List[str],
 	             max_results: int = 1000,
 	             timeout: int = 3000,
 	             match_threshold=12,
 	             max_child_processes: int = 3,
-	             max_threads: int = cpu_count()):
+	             max_threads: int = cpu_count()) -> None:
 
 		super().__init__(
 			starting_urls,
