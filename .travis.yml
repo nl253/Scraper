@@ -1,0 +1,24 @@
+sudo: false
+language: python
+cache:
+    directories:
+        - "$HOME/.pyenv"
+python:
+    - "3.6"
+    - "3.6-dev"
+    - "3.7-dev"
+    - "nightly" 
+    - "pypy-5.3.1"
+
+# command to install dependencies
+install: "pip install -r requirements.txt"
+
+# command to run tests
+script: python -m unittest
+
+branches: 
+    only:
+        - master
+
+notifications:
+    email: true
