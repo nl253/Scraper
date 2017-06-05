@@ -19,6 +19,7 @@ script: python -m unittest
 branches: 
     only:
         - master
+        - feature
 
 notifications:
     email: true
