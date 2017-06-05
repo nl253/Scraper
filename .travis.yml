@@ -14,7 +14,9 @@ python:
 install: "pip install -r requirements.txt"
 
 # command to run tests
-script: python -m unittest discover 
+script: 
+    - mypy --python-version 3.6 --check-untyped-defs --warn-redundant-casts --strict-optional --inferstats --no-warn-no-return * ./export/* utils/*
+    - python -m unittest discover 
 
 # blocklist
 branches: 
