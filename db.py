@@ -6,10 +6,10 @@
 """High level, simple convenience wrapper for sqlite3 from the standard library.
 """
 
-from typing import Tuple, Union
-import sqlite3
 import os
 import re
+import sqlite3
+from typing import Tuple, Union
 
 Row = Tuple[Union[str, float, int, None], ...]
 
@@ -53,7 +53,6 @@ class SQLite():
             return True
 
         except Exception as e:
-
             print(f"{e} occured.")
             return False
 

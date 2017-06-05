@@ -6,13 +6,14 @@
 # - bs4
 # - lxml
 
-from textblob.en import polarity, subjectivity
-from typing import List, Generator, Optional
 import logging
 import re
-from preprocessing import StringSanitizer
-from http_tools import HTMLWrapper
+from typing import List, Optional, Iterable, Iterator
+
 from bs4 import BeautifulSoup
+from http_tools import HTMLWrapper
+from preprocessing import StringSanitizer
+from textblob.en import polarity, subjectivity
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -26,7 +27,7 @@ class ChunkAnalyser():
     def text(self) -> str:
         return self._text
 
-    def theme_count(self, themes: List[str]) -> int:
+    def theme_count(self, themes: Iterable[str]) -> int:
         count: int = 0
         for theme in themes:
             results: List[str] = re.compile(theme).findall(self.text)

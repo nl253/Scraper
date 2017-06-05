@@ -1,7 +1,7 @@
-import unittest
-from spiders import BaseSpider, ThemeSpider
-import faker
 import logging
+import unittest
+
+from spiders import BaseSpider
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -19,7 +19,7 @@ class BaseSpiderVerifier():
     def spider(self) -> BaseSpider:
         return self._spider
 
-    def verify_constructor(self):
+    def _verify_constructor(self):
 
         assert type(self.spider._max_queue_size) is int, \
             'Max queue size must be an int.'
@@ -69,6 +69,9 @@ class BaseSpiderVerifier():
         assert self.spider._max_results > 0 and \
             self.spider._max_results < 9999999,\
             'Max results must be an int between 0 and 9999999. {self.spider._max_results} is not valid.'
+
+    def sane(self):
+        return self._verify_constructor()
 
 class BaseSpiderTester(unittest.TestCase):
 
