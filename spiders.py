@@ -39,9 +39,9 @@ from time import sleep
 from typing import List, Iterable, Any, Optional
 from urllib.error import HTTPError, URLError
 
-from _test_spiders import BaseSpiderVerifier
 # OWN
 from analysis import HTMLAnalyser, HTMLWrapper
+from _test_spiders import BaseSpiderVerifier
 from logutils import *
 
 
@@ -411,10 +411,6 @@ class ThemeSpider(BaseSpider):
 	It will output results as chunks of texts relevant to the themes passed
 	to the constructor.
 	"""
-
-	def produce(self, item: Any) -> Optional[Any]:
-		open('theme_scrape.txt', mode='w', encoding='utf-8').write(str(item))
-
 	def __init__(self, starting_urls: Iterable[str],
 	             themes: List[str],
 	             max_results: int = 1000,
@@ -436,6 +432,11 @@ class ThemeSpider(BaseSpider):
 
 		# min matches on a page to add entries and links
 		self._match_threshold: int = match_threshold
+
+	def produce(self, item: Any) -> Optional[Any]:
+		stream = open('theme_scrape.txt', mode='w', encoding='utf-8')
+		stream.write(str(item))
+		stream.close()
 
 	def test_result(self, URL: str, HTML: str, headers: dict) -> bool:
 
