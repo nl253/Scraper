@@ -10,6 +10,7 @@ from urllib.parse import urljoin, urlparse
 import logging
 from http.client import HTTPMessage, HTTPResponse
 from typing import Iterator, Tuple, Union, List
+
 # from preprocessing import HTMLSanitizer
 
 logging.basicConfig(
@@ -18,6 +19,7 @@ logging.basicConfig(
     datefmt="%I:%M:%S")
 
 l = logging.getLogger(name=__name__)
+
 
 class HTTPValidator:
     def __init__(self):
@@ -39,6 +41,7 @@ class HTTPValidator:
             return True
         return False
 
+
 class HTMLWrapper:
     def __init__(self, URL: str):
         self._response: Union[HTTPResponse, addinfourl] = urlopen(URL, timeout=15)
@@ -50,7 +53,7 @@ class HTMLWrapper:
     def iURLs(self) -> Iterator[str]:
         # l.info('Retrieving and filtering links')
         links: List[str] = list(set(re.compile(r'(?<=href=").*?(?=")',
-                                    flags=re.UNICODE).findall(self.HTML)))
+                                               flags=re.UNICODE).findall(self.HTML)))
         parsed_focus_url = urlparse(self.URL)
         for i in range(len(links)):
             parsed = urlparse(links[i])
@@ -115,5 +118,3 @@ class HTMLWrapper:
 
     def __contains__(self, item: Union[int, str]) -> bool:
         return True if item in self.HTML else False
-
-
