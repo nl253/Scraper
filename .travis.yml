@@ -19,7 +19,8 @@ install:
 # command to run tests
 script: 
     - mypy --python-version 3.6 --check-untyped-defs --warn-redundant-casts --strict-optional --inferstats --no-warn-no-return * ./export/* utils/*
-    - python -m unittest discover 
+    - python -m unittest discover
+    - python -m doctest analysis.py http_tools.py preprocessing.py
 
 # blocklist
 branches: 
