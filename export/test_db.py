@@ -21,7 +21,7 @@ class SQLiteTester(unittest.TestCase):
         self.db.rollback()
         self.db._connection.close()
 
-    def add_row(self):
+    def test_add_row(self):
 
         fake_row_list: Tuple[str, float, int] = \
             (self.gen.name(), self.gen.pyfloat(), self.gen.pyint())
@@ -36,7 +36,7 @@ class SQLiteTester(unittest.TestCase):
 
         self.db.add_row(fake_row_iter)
 
-    def bad_type(self):
+    def test_bad_type(self):
         badly_typed_tuple = (self.gen.pydecimal(), dict(), set())
         badly_typed_list = [(object(), map(lambda x: x, [])) for i in range(10)]
 
@@ -47,7 +47,7 @@ class SQLiteTester(unittest.TestCase):
             for entry in badly_typed_tuple:
                 self.db.add_row(entry)
 
-    def add_many_rows(self):
+    def test_add_many_rows(self):
 
         fake_rows: List[Entry] = [
             (self.gen.name(), self.gen.pyint(), self.gen.pyfloat()) \
@@ -61,36 +61,42 @@ class SQLiteTester(unittest.TestCase):
 
         self.db.add_rows(fake_rows)
 
-    def clear_table(self):
+    def test_clear_table(self):
         pass
 
-    def execute_script(self):
+    def test_execute_script(self):
         pass
 
-    def rollback(self):
+    def test_rollback(self):
         pass
 
-    def invalid_input(self):
+    def test_invalid_input(self):
         pass
 
-    def create_table(self):
+    def test_create_table(self):
         pass
 
-    def drop_table(self):
+    def test_drop_table(self):
         pass
 
-    def replace_table(self):
+    def test_replace_table(self):
         pass
 
-    def test(self):
-        self.setUp()
-        self.add_row()
-        self.bad_type()
-        self.add_many_rows()
-        self.clear_table()
-        self.execute_script()
-        self.rollback()
-        self.invalid_input()
-        self.create_table()
-        self.replace_table()
-        self.tearDown()
+    # def test(self):
+        #     self.setUp()
+        #     self.add_row()
+        #     self.bad_type()
+        #     self.add_many_rows()
+        #     self.clear_table()
+        #     self.execute_script()
+        #     self.rollback()
+        #     self.invalid_input()
+        #     self.create_table()
+        #     self.replace_table()
+        #     self.tearDown()
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+

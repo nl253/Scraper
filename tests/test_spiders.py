@@ -75,13 +75,9 @@ class BaseSpiderVerifier():
 
 class BaseSpiderTester(unittest.TestCase):
 
-
     def test_constructor(self):
-
         self.assertTrue(BaseSpiderVerifier(BaseSpider()))
 
-
-        return True
 
     def no_internet(self):
         pass

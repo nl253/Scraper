@@ -33,7 +33,7 @@ logging.basicConfig(
     format='%(levelname)s:%(asctime)s  %(message)s')
 
 
-class ChunkAnalyser():
+class ChunkAnalyser:
     """
     Role: analyse small chunks of text max paragraph, min a few words.
     Allows for:

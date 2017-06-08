@@ -12,6 +12,7 @@ from http.client import HTTPMessage, HTTPResponse
 from typing import Iterator, Tuple, Union, List
 
 # from preprocessing import HTMLSanitizer
+from urllib.response import addinfourl
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,33 +22,25 @@ logging.basicConfig(
 l = logging.getLogger(name=__name__)
 
 
-class HTTPValidator:
-    def __init__(self):
-        self._url_regex: Pattern = re.compile(
-            r'^(?:http|ftp)s?://'  # http:// or https://
-            # domain...
-            r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'
-            r'localhost|'  # localhost...
-            r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
-            r'(?::\d+)?'  # optional port
-            r'(?:/?|[/?]\S+)$', re.IGNORECASE)
-
-        self._url_neg_regex: Pattern = re.compile(
-            '(\.((zip)|(png)|(jpg)|(jpeg)|(tar)|(docx)|(tex)|(css)|(js)|(rar)|(pdf)|(docx)))$')
-
-    @staticmethod
-    def validate_URL(self, URL: str) -> bool:
-        if self._url_regex.search(URL) and not self._url_neg_regex.search(URL):
-            return True
-        return False
-
-
 class HTMLWrapper:
+
+    # static variables
+    _url_neg_regex: Pattern = re.compile(
+        '(\.((zip)|(png)|(jpg)|(jpeg)|(tar)|(tex)|(css)|(js)|(rar)|(pdf)|(docx)))$')
+
+    _url_regex: Pattern = re.compile(
+        r'^(?:http|ftp)s?://'  # http:// or https://
+        # domain...
+        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'
+        r'localhost|'  # localhost...
+        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
+        r'(?::\d+)?'  # optional port
+        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+
     def __init__(self, URL: str):
         self._response: Union[HTTPResponse, addinfourl] = urlopen(URL, timeout=15)
         self._html = None
         self._info: HTTPMessage = self._response.info()
-        self._validator: HTTPValidator = HTTPValidator()
 
     @property
     def iURLs(self) -> Iterator[str]:
@@ -61,7 +54,7 @@ class HTMLWrapper:
                 links[i] = urljoin(
                     parsed_focus_url.scheme + "://www." + parsed_focus_url.netloc,
                     parsed.path)
-        return filter(self._validator.validate_URL, links)
+        return filter(validate_URL, links)
 
     @property
     def code_status(self) -> int:
@@ -118,3 +111,37 @@ class HTMLWrapper:
 
     def __contains__(self, item: Union[int, str]) -> bool:
         return True if item in self.HTML else False
+
+
+def validate_URL(URL: str) -> bool:
+    """
+    For the sake of flexibility ie being able to use it without requesting a page
+    (which is what happens when you pass a URL to the constructor), this is left to be static.
+    It allows to validate a URL (not perfect but good enough).
+
+    For instance,
+    >>> url = "something"
+    >>> validate_HTML(url)
+    False
+    >>> url = "https://stackoverflow.com/questions/68645/static-class-variables-in-python"
+    >>> validate_HTML(url)
+    True
+    """
+    if len(URL) > 5 and HTMLWrapper._url_regex.search(URL) and \
+            not HTMLWrapper._url_neg_regex.search(URL):
+        return True
+    else:
+        return False
+
+
+def validate_HTML(HTML: str) -> bool:
+    """
+    For the sake of flexibility ie being able to use it without requesting a page
+    (which is what happens when you pass a URL to the constructor),
+     this is a allows method that allows to check if a given HTML page (passed as a string) is valid.
+     >>> HTML_string: str = "<html>WOOO</html>"
+     >>> HTMLWrapper.validate_HTML(HTML_string)
+     False
+     >>> # too short to be valid!
+    """
+    return len(HTML) > 30

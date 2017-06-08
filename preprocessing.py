@@ -12,6 +12,7 @@ import re
 
 punctuation = "£%$![]{}~#-+=>^&*`¬</"
 
+
 class StringSanitizer():
     def __init__(self, text: str):
         assert type(text) is str, 'Type of text not str'
@@ -32,11 +33,12 @@ class StringSanitizer():
         return self
 
     def sanitize(self):
-        return self._beautify()._remove_punct()._remove_references()
+        jeturn self._beautify()._remove_punct()._remove_references()
 
     @property
     def text(self):
         return self._text
+
 
 class HTMLSanitizer():
     def __init__(self, html: str):
@@ -68,7 +70,7 @@ class HTMLSanitizer():
         link_length = 0
         for i in elem.findall(".//a"):
             link_length += text_length(i)
-        #if len(elem.findall(".//div") or elem.findall(".//p")):
+        # if len(elem.findall(".//div") or elem.findall(".//p")):
         #    link_length = link_length
         total_length = text_length(elem)
         return float(link_length) / max(total_length, 1)
@@ -78,8 +80,8 @@ class HTMLSanitizer():
             for e in node.findall('.//%s' % tag_name):
                 yield e
 
-class DocumentCleaner(object):
 
+class DocumentCleaner(object):
     def __init__(self, config, article):
         # config
         self.config = config
@@ -92,18 +94,18 @@ class DocumentCleaner(object):
 
         # nodes to remove regexp
         self.remove_nodes_re = (
-        "^side$|combx|retweet|mediaarticlerelated|menucontainer|"
-        "navbar|storytopbar-bucket|utility-bar|inline-share-tools"
-        "|comment|PopularQuestions|contact|foot|footer|Footer|footnote"
-        "|cnn_strycaptiontxt|cnn_html_slideshow|cnn_strylftcntnt"
-        "|^links$|meta$|shoutbox|sponsor"
-        "|tags|socialnetworking|socialNetworking|cnnStryHghLght"
-        "|cnn_stryspcvbx|^inset$|pagetools|post-attributes"
-        "|welcome_form|contentTools2|the_answers"
-        "|communitypromo|runaroundLeft|subscribe|vcard|articleheadings"
-        "|date|^print$|popup|author-dropdown|tools|socialtools|byline"
-        "|konafilter|KonaFilter|breadcrumbs|^fn$|wp-caption-text"
-        "|legende|ajoutVideo|timestamp|js_replies"
+            "^side$|combx|retweet|mediaarticlerelated|menucontainer|"
+            "navbar|storytopbar-bucket|utility-bar|inline-share-tools"
+            "|comment|PopularQuestions|contact|foot|footer|Footer|footnote"
+            "|cnn_strycaptiontxt|cnn_html_slideshow|cnn_strylftcntnt"
+            "|^links$|meta$|shoutbox|sponsor"
+            "|tags|socialnetworking|socialNetworking|cnnStryHghLght"
+            "|cnn_stryspcvbx|^inset$|pagetools|post-attributes"
+            "|welcome_form|contentTools2|the_answers"
+            "|communitypromo|runaroundLeft|subscribe|vcard|articleheadings"
+            "|date|^print$|popup|author-dropdown|tools|socialtools|byline"
+            "|konafilter|KonaFilter|breadcrumbs|^fn$|wp-caption-text"
+            "|legende|ajoutVideo|timestamp|js_replies"
         )
         self.regexp_namespace = "http://exslt.org/regular-expressions"
         self.nauthy_ids_re = "//*[re:test(@id, '%s', 'i')]" % self.remove_nodes_re
@@ -116,10 +118,10 @@ class DocumentCleaner(object):
         self.facebook_re = "[^-]facebook"
         self.facebook_braodcasting_re = "facebook-broadcasting"
         self.twitter_re = "[^-]twitter"
-        self.tablines_replacements = ReplaceSequence()\
-                                            .create("\n", "\n\n")\
-                                            .append("\t")\
-                                            .append("^\\s+$")
+        self.tablines_replacements = ReplaceSequence() \
+            .create("\n", "\n\n") \
+            .append("\t") \
+            .append("^\\s+$")
 
     def clean(self):
         doc_to_clean = self.article.doc
@@ -243,16 +245,16 @@ class DocumentCleaner(object):
                 kid_text_node = kid
                 kid_text = self.parser.getText(kid)
                 replace_text = self.tablines_replacements.replaceAll(kid_text)
-                if(len(replace_text)) > 1:
+                if (len(replace_text)) > 1:
                     previous_sibling_node = self.parser.previousSibling(kid_text_node)
                     while previous_sibling_node is not None \
-                        and self.parser.getTag(previous_sibling_node) == "a" \
-                        and self.parser.getAttribute(previous_sibling_node, 'grv-usedalready') != 'yes':
+                            and self.parser.getTag(previous_sibling_node) == "a" \
+                            and self.parser.getAttribute(previous_sibling_node, 'grv-usedalready') != 'yes':
                         outer = " " + self.parser.outerHtml(previous_sibling_node) + " "
                         replacement_text.append(outer)
                         nodes_to_remove.append(previous_sibling_node)
                         self.parser.setAttribute(previous_sibling_node,
-                                    attr='grv-usedalready', value='yes')
+                                                 attr='grv-usedalready', value='yes')
                         prev = self.parser.previousSibling(previous_sibling_node)
                         previous_sibling_node = prev if prev is not None else None
                     # append replace_text
@@ -260,13 +262,13 @@ class DocumentCleaner(object):
                     #
                     next_sibling_node = self.parser.nextSibling(kid_text_node)
                     while next_sibling_node is not None \
-                        and self.parser.getTag(next_sibling_node) == "a" \
-                        and self.parser.getAttribute(next_sibling_node, 'grv-usedalready') != 'yes':
+                            and self.parser.getTag(next_sibling_node) == "a" \
+                            and self.parser.getAttribute(next_sibling_node, 'grv-usedalready') != 'yes':
                         outer = " " + self.parser.outerHtml(next_sibling_node) + " "
                         replacement_text.append(outer)
                         nodes_to_remove.append(next_sibling_node)
                         self.parser.setAttribute(next_sibling_node,
-                                    attr='grv-usedalready', value='yes')
+                                                 attr='grv-usedalready', value='yes')
                         next = self.parser.nextSibling(next_sibling_node)
                         previous_sibling_node = next if next is not None else None
 
@@ -275,7 +277,7 @@ class DocumentCleaner(object):
                 nodes_to_return.append(kid)
 
         # flush out anything still remaining
-        if(len(replacement_text) > 0):
+        if (len(replacement_text) > 0):
             new_node = self.get_flushed_buffer(''.join(replacement_text), doc)
             nodes_to_return.append(new_node)
             replacement_text = []
@@ -322,7 +324,7 @@ class DocumentCleaner(object):
 
         for elem in self.tags(node, "iframe"):
             if "src" in elem.attrib and REGEXES["videoRe"].search(elem.attrib["src"]):
-                elem.text = "VIDEO" # ADD content to iframe text node to force <iframe></iframe> proper output
+                elem.text = "VIDEO"  # ADD content to iframe text node to force <iframe></iframe> proper output
             else:
                 elem.drop_tree()
 
@@ -334,14 +336,14 @@ class DocumentCleaner(object):
             weight = self.class_weight(el)
             if el in candidates:
                 content_score = candidates[el]['content_score']
-                #print '!',el, '-> %6.3f' % content_score
+                # print '!',el, '-> %6.3f' % content_score
             else:
                 content_score = 0
             tag = el.tag
 
             if weight + content_score < 0:
                 log.debug("Removed %s with score %6.3f and weight %-3s" %
-                    (describe(el), content_score, weight, ))
+                          (describe(el), content_score, weight,))
                 el.drop_tree()
             elif el.text_content().count(",") < 10:
                 counts = {}
@@ -359,18 +361,18 @@ class DocumentCleaner(object):
                         content_score = candidates[parent_node]['content_score']
                     else:
                         content_score = 0
-                #if parent_node is not None:
-                    #pweight = self.class_weight(parent_node) + content_score
-                    #pname = describe(parent_node)
-                #else:
-                    #pweight = 0
-                    #pname = "no parent"
+                        # if parent_node is not None:
+                        # pweight = self.class_weight(parent_node) + content_score
+                        # pname = describe(parent_node)
+                        # else:
+                        # pweight = 0
+                        # pname = "no parent"
                 to_remove = False
                 reason = ""
 
-                #if el.tag == 'div' and counts["img"] >= 1:
+                # if el.tag == 'div' and counts["img"] >= 1:
                 #    continue
-                if counts["p"] and counts["img"] > 1+counts["p"]*1.3:
+                if counts["p"] and counts["img"] > 1 + counts["p"] * 1.3:
                     reason = "too many images (%s)" % counts["img"]
                     to_remove = True
                 elif counts["li"] > counts["p"] and tag != "ul" and tag != "ol":
@@ -386,9 +388,9 @@ class DocumentCleaner(object):
                     reason = "too short content length %s and too many images" % content_length
                     to_remove = True
                 elif weight < 25 and link_density > 0.2:
-                        reason = "too many links %.3f for its weight %s" % (
-                            link_density, weight)
-                        to_remove = True
+                    reason = "too many links %.3f for its weight %s" % (
+                        link_density, weight)
+                    to_remove = True
                 elif weight >= 25 and link_density > 0.5:
                     reason = "too many links %.3f for its weight %s" % (
                         link_density, weight)
@@ -399,46 +401,46 @@ class DocumentCleaner(object):
                 elif not content_length:
                     reason = "no content"
                     to_remove = True
-#                if el.tag == 'div' and counts['img'] >= 1 and to_remove:
-#                    imgs = el.findall('.//img')
-#                    valid_img = False
-#                    log.debug(tounicode(el))
-#                    for img in imgs:
-#
-#                        height = img.get('height')
-#                        text_length = img.get('text_length')
-#                        log.debug ("height %s text_length %s" %(repr(height), repr(text_length)))
-#                        if to_int(height) >= 100 or to_int(text_length) >= 100:
-#                            valid_img = True
-#                            log.debug("valid image" + tounicode(img))
-#                            break
-#                    if valid_img:
-#                        to_remove = False
-#                        log.debug("Allowing %s" %el.text_content())
-#                        for desnode in self.tags(el, "table", "ul", "div"):
-#                            allowed[desnode] = True
+                    #                if el.tag == 'div' and counts['img'] >= 1 and to_remove:
+                    #                    imgs = el.findall('.//img')
+                    #                    valid_img = False
+                    #                    log.debug(tounicode(el))
+                    #                    for img in imgs:
+                    #
+                    #                        height = img.get('height')
+                    #                        text_length = img.get('text_length')
+                    #                        log.debug ("height %s text_length %s" %(repr(height), repr(text_length)))
+                    #                        if to_int(height) >= 100 or to_int(text_length) >= 100:
+                    #                            valid_img = True
+                    #                            log.debug("valid image" + tounicode(img))
+                    #                            break
+                    #                    if valid_img:
+                    #                        to_remove = False
+                    #                        log.debug("Allowing %s" %el.text_content())
+                    #                        for desnode in self.tags(el, "table", "ul", "div"):
+                    #                            allowed[desnode] = True
 
-                    #find x non empty preceding and succeeding siblings
+                    # find x non empty preceding and succeeding siblings
                     i, j = 0, 0
                     x = 1
                     siblings = []
                     for sib in el.itersiblings():
-                        #log.debug(sib.text_content())
+                        # log.debug(sib.text_content())
                         sib_content_length = text_length(sib)
                         if sib_content_length:
-                            i =+ 1
+                            i = + 1
                             siblings.append(sib_content_length)
                             if i == x:
                                 break
                     for sib in el.itersiblings(preceding=True):
-                        #log.debug(sib.text_content())
+                        # log.debug(sib.text_content())
                         sib_content_length = text_length(sib)
                         if sib_content_length:
-                            j =+ 1
+                            j = + 1
                             siblings.append(sib_content_length)
                             if j == x:
                                 break
-                    #log.debug(str_(siblings))
+                    # log.debug(str_(siblings))
                     if siblings and sum(siblings) > 1000:
                         to_remove = False
                         log.debug("Allowing %s" % describe(el))
@@ -447,9 +449,9 @@ class DocumentCleaner(object):
 
                 if to_remove:
                     log.debug("Removed %6.3f %s with weight %s cause it has %s." %
-                        (content_score, describe(el), weight, reason))
-                    #print tounicode(el)
-                    #log.debug("pname %s pweight %.3f" %(pname, pweight))
+                              (content_score, describe(el), weight, reason))
+                    # print tounicode(el)
+                    # log.debug("pname %s pweight %.3f" %(pname, pweight))
                     el.drop_tree()
                 else:
                     log.debug("Not removing %s of length %s: %s" % (
@@ -458,8 +460,8 @@ class DocumentCleaner(object):
         self.html = node
         return self.get_clean_html()
 
-class OutputFormatter(object):
 
+class OutputFormatter(object):
     def __init__(self, config, article):
         # config
         self.config = config
@@ -556,8 +558,8 @@ class OutputFormatter(object):
             text = self.parser.getText(el)
             stop_words = self.stopwords_class(language=self.get_language()).get_stopword_count(text)
             if (tag != 'br' or text != '\\r') and stop_words.get_stopword_count() < 3 \
-                and len(self.parser.getElementsByTag(el, tag='object')) == 0 \
-                and len(self.parser.getElementsByTag(el, tag='embed')) == 0:
+                    and len(self.parser.getElementsByTag(el, tag='object')) == 0 \
+                    and len(self.parser.getElementsByTag(el, tag='embed')) == 0:
                 self.parser.remove(el)
             # TODO
             # check if it is in the right place
@@ -565,4 +567,3 @@ class OutputFormatter(object):
                 trimmed = self.parser.getText(el)
                 if trimmed.startswith("(") and trimmed.endswith(")"):
                     self.parser.remove(el)
-
