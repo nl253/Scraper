@@ -6,7 +6,7 @@
 # BORROWED:
 # - DocumentCleaner (from goose and newspaper)
 # - OutputFormatter (from goose and newspaper)
-
+from pydoc import describe
 from re import compile
 import re
 
