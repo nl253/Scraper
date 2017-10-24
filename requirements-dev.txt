@@ -1,0 +1,9 @@
+# tools
+pytest
+mypy
+# documentation
+sphinx
+
+-r requirements.txt
+-r requirements-test.txt
+# vim: ft=conf
