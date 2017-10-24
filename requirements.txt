@@ -1,13 +1,4 @@
-# framework
-jinja2
-Flask
+lxml
+docopt
+cssselect
 
-# server
-gunicorn
-
-# markup conversion
-markdown2
-python-creole
-textile
-docutils
-# vim: ft=conf
