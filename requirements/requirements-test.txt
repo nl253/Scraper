@@ -1,4 +1,0 @@
-pylint
-pytest
-git+git://github.com/python/mypy@master
-tox

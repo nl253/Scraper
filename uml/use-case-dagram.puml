@@ -1,0 +1,17 @@
+@startuml
+
+skinparam sequenceMessageAlign center
+skinparam actorFontSize 14
+skinparam actorFontStyle bold
+skinparam usecaseFontSize 11
+
+actor :API user:
+
+rectangle Scraper {
+    :API user: -> (crawl website)
+    (crawl website) <-right- (filter results): <<extend>>
+    (filter results) <-- (save to database): <<extend>>
+    (crawl website) <-- (generate report): <<extend>>
+}
+
+@enduml

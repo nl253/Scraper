@@ -13,5 +13,5 @@ Scraper
 
 ----------------------------------------------
 
-MIT Licensed
+BSD Licensed
 nl253 2017

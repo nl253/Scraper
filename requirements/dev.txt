@@ -1,0 +1,13 @@
+## tools
+
+# type checking
+mypy
+pytest
+
+# linters
+pylint
+
+# doc linters
+pydocstyle
+
+# vim: ft=conf
