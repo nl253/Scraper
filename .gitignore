@@ -1,0 +1,307 @@
+
+# password storage
+
+.netrc
+
+
+# Jetbrains
+
+*.iml
+.idea/
+
+# Extensions
+
+*.bak
+*.bluej
+*.class
+*.ctxt
+*.pdf
+*.png
+*.ppt
+*.pptx
+*.backup
+
+# VCS
+.git-credentials
+.gitignores/.github/PULL_REQUEST_TEMPLATE.md
+
+
+.xscreensaver
+
+# Node.js
+
+.nvm/
+.v8flags*
+.node_repl*
+.node-gyp/
+.npmrc
+node_modules/
+.npm/
+
+# Go
+
+.gvm/
+
+# Haskell
+
+.ghc-mod/
+.stack/
+.ghc/
+.cabal/
+
+# Python
+
+.pyenv/
+PyComLine
+.pylint.d/
+.python-version
+anaconda3/
+.ipython/
+*.ropeprojec*
+
+# Vim
+
+*~
+tags
+.viminfo
+.vimtags
+.vim/
+undo/*
+
+# VSC
+
+.subversion/
+
+# Browsers
+
+.elinks/
+.tor-browser/
+
+# Gnome
+
+.gnome/
+*/undo/*
+*/wn/*
+*breakpoints*
+*session*
+.*.tmp
+.ICEauthority
+.Notes_html/
+.Trash-*
+.Xauthority
+.applications/
+.aspell.*
+.athome
+.autojump/
+.bundle/
+.cabal/packages/
+.case/
+.conda/environments.txt
+.inspections.xml
+.vorg/tasks.vorg
+
+# log
+
+**/log
+**/*.log
+**/.log
+
+# Java
+
+.java/
+.m2/ # maven
+.oracle_jre_usage/
+ music
+
+# terminal emulator
+
+.cookiecutter*
+.dbshell
+.dicts/
+.directory
+.dlv/
+.esd_auth
+.fonts/
+.fuse_hidden*
+.fzf/
+.gcalcli*
+.gimp*
+.gists/
+.git-stats
+.gitbook/
+.gksu*
+.gnupg/
+.grip/
+.gtkrc*
+.home
+.icons/
+.idlerc/
+
+.jupyter/migrated
+.laptop
+.lesshst
+
+# binaries
+
+.bin/
+
+# Rust
+
+.multirust/
+.rustup/
+.cargo/
+
+# libraries
+
+
+# Linters
+
+.proselint/
+
+# Config
+
+# libreoffice
+
+# manjaro
+
+
+
+# PHP
+
+
+# History
+
+.netrwhist
+.*_history
+*history*
+.*-history
+
+.nfs*
+.pc
+.pdepend/
+.pki/
+.rnd
+.scripts/
+.split
+.sqlite
+.ssh/
+.swt/
+.task/
+.templateengine/
+.thumbnails/
+.tmux/
+.tooling/
+.travis/
+.v8flags.5.8.283.41.norbert.json
+
+# text editors
+
+.eclim/
+.eclipse/
+.emacs.d/
+.emacs.desktop
+
+# desktop env
+
+.xmonad/
+.xsession-error*
+
+# Dirs
+
+Raptor
+Pictures
+Downloads/
+Downloads
+Projects/
+Documents/
+Notes/
+Libraries/
+Uni/
+
+.m2/
+.yEd/
+.zenmap/
+.3T/
+.p2/
+.xxx/
+.*201*/
+.mozilla/
+.multirust
+.zcompdump
+
+# Ruby
+
+.rbenv/
+.gem/
+
+# Cloud storage
+
+.gdrive/
+OneDrive/
+Dropbox/
+.dropbox/
+.dropbox
+.dropbox*
+
+boosterclapps/
+case/
+.config/
+.local/
+go/
+miniconda3/
+
+# raptor
+
+nl253
+
+# database
+
+.pgpass
+
+# data
+
+Dump/
+nltk_data/
+seaborn-data/
+
+
+package-lock.json
+.thunderbird/
+
+
+# Package Managers
+
+.yarn/
+.yarnrc
+
+# Other
+
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-v][a-z]
+[._]sw[a-p]
+Empty*
+*.swp
+.wget*
+
+# Jetbrains
+
+.PhpStorm*
+.DataGrip*
+.Gogland*
+.IdeaIC*
+*Projects/
+.IntelliJIdea2017.2/
+.PyCharm2017*
+.Rider*
+.RubyMine*
+.WebStorm*
+.CLion*
+.WebStorm*
+
+# archived repo
+
+*.zip
+*.tar
+
+.multirust/
