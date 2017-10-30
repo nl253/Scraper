@@ -1,5 +1,0 @@
-# testing
-pytest
-tox
-
-# vim: ft=conf
