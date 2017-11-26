@@ -22,11 +22,11 @@ from typing import Callable, Iterable, List, Set, Tuple
 #  import lxml.html
 
 logging.basicConfig(
-        level=logging.DEBUG,
-        filemode='w',
-        format=
-        '%(processName)s %(threadName)s %(module)s %(levelname)s [%(asctime)s] [%(lineno)s] %(message)s.',
-        datefmt="%M:%S"
+    level=logging.DEBUG,
+    filemode='w',
+    format=
+    '%(processName)s %(threadName)s %(module)s %(levelname)s [%(asctime)s] [%(lineno)s] %(message)s.',
+    datefmt="%M:%S"
 )
 
 log: Logger = logging.getLogger(name=__name__)
@@ -70,18 +70,20 @@ def crawl(url: str) -> Iterable[str]:
                 #  DOM: lxml.html.etree.ElementTree = pool.submit(lxml.html.fromstring,
                 #  h).result(7)
 
-                return (i for i in pool.map(lambda x: x.group('url'),
-                                            pool.submit(re.compile(
-                                                    r'href="(?P<url>.*?)"').finditer,
-                                                        pool.submit((
-                                                                        pool.submit(
-                                                                                instream.read).result(
-                                                                                7)).decode,
-                                                                    'utf-8').result(
-                                                                7)).result()) if
-                        not re.compile(
-                                r'\.(?P<extension>css|js|(min|slim).\w+)').search(
-                                i))
+                return (
+                    i
+                    for i in pool.map(
+                        lambda x: x.group('url'),
+                        pool.submit(
+                            re.compile(r'href="(?P<url>.*?)"').finditer,
+                            pool.submit((pool.submit(instream.read).result(7)
+                                         ).decode, 'utf-8').result(7)
+                        ).result()
+                    )
+                    if
+                    not re.compile(r'\.(?P<extension>css|js|(min|slim).\w+)'
+                                   ).search(i)
+                )
 
                 #  return pool.map(lambda x: x.attrib['href'],
                 #  pool.submit(DOM.cssselect, "a[href]").result(7), chunksize=10)
@@ -92,9 +94,15 @@ def crawl(url: str) -> Iterable[str]:
 
 
 # noinspection PyIncorrectDocstring
-def main(starting_urls: List[str], _waited=False, timeout=30,
-         _start=time(), _results=queue.LifoQueue(), _scraped=set(),
-         _jobs=queue.Queue()):
+def main(
+    starting_urls: List[str],
+    _waited=False,
+    timeout=30,
+    _start=time(),
+    _results=queue.LifoQueue(),
+    _scraped=set(),
+    _jobs=queue.Queue()
+):
     """
     The main method.
 
@@ -104,7 +112,8 @@ def main(starting_urls: List[str], _waited=False, timeout=30,
     :param timeout: timeout in seconds
 
     """
-    for i in starting_urls: _jobs.put(i)
+    for i in starting_urls:
+        _jobs.put(i)
 
     with ThreadPoolExecutor(16) as pool:
         while not _jobs.empty():  # queue
@@ -133,18 +142,25 @@ def main(starting_urls: List[str], _waited=False, timeout=30,
         while not _results.empty():
             log.info(_results.get())
     else:
-        return main(_waited=True, starting_urls=[], _start=_start,
-                    timeout=timeout, _results=_results, _scraped=_scraped,
-                    _jobs=_jobs)
+        return main(
+            _waited=True,
+            starting_urls=[],
+            _start=_start,
+            timeout=timeout,
+            _results=_results,
+            _scraped=_scraped,
+            _jobs=_jobs
+        )
 
 
-main(starting_urls=[
-            "https://www.google.co.uk/search?q=multithreading&ie=utf-8&oe=utf-8&client=firefox-b-ab&gfe_rd=cr&dcr=0&ei=raH3Wcj3IcWh4gSFi5DYBg",
-            "https://www.tutorialspoint.com/operating_system/os_multi_threading.htm",
-            "https://en.wikipedia.org/wiki/Translation_lookaside_buffer",
-            "https://en.wikipedia.org/wiki/Content-addressable_memory",
-            "https://docs.scipy.org/doc/numpy-dev/user/basics.indexing.html",
-            "https://docs.scipy.org/doc/numpy-dev/reference/ufuncs.html"
-        ],
-        timeout=500
+main(
+    starting_urls=[
+        "https://www.google.co.uk/search?q=multithreading&ie=utf-8&oe=utf-8&client=firefox-b-ab&gfe_rd=cr&dcr=0&ei=raH3Wcj3IcWh4gSFi5DYBg",
+        "https://www.tutorialspoint.com/operating_system/os_multi_threading.htm",
+        "https://en.wikipedia.org/wiki/Translation_lookaside_buffer",
+        "https://en.wikipedia.org/wiki/Content-addressable_memory",
+        "https://docs.scipy.org/doc/numpy-dev/user/basics.indexing.html",
+        "https://docs.scipy.org/doc/numpy-dev/reference/ufuncs.html"
+    ],
+    timeout=500
 )
